@@ -1,0 +1,42 @@
+﻿<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<html>
+<head> 
+    <style>
+body {
+    border: 0;
+    margin: 0;
+    border-spacing: 0;
+}       
+
+.v {
+    visibility: visible!important; 
+}
+
+#a, #b, #h, #l {
+    text-align: center;
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    visibility: hidden;
+}
+
+#p, body {
+    font-size: 10vh;
+}
+
+    </style>
+</head>
+<body>
+    <div id="l" class="v">
+        <h1>Loading...</h1>
+    </div>
+    <canvas id="a"></canvas>
+    <canvas id="b"></canvas>
+    <div id="h">
+        <h1>GUNTURION</h1>
+        <button id="p">PLAY!</button>
+        
+    </div>
+    <script type="text/javascript" src="build/out.js?__inline=true"></script>
+</body>
+</html>

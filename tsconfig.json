@@ -1,0 +1,20 @@
+{
+    
+    "compilerOptions": {
+        "module": "amd",
+        "target": "es5",
+        "outFile": "build/out.js",
+        "rootDir": ".",
+        "noImplicitAny": false,
+        "removeComments": true,
+        "preserveConstEnums": true,
+        "sourceMap": true
+    },
+    "include": [
+        "src/main/ts/**/*",
+        "src/main/d.ts/**/*", 
+        "node_modules/@types/**/*.d.ts"
+    ],
+    "exclude": [
+    ]
+}
