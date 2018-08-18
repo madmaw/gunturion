@@ -35,6 +35,7 @@ uniform vec3 uLineColor;
 uniform float uLineWidth;
 uniform float uVisibleDistance;
 uniform float uCameraLightDistance;
+uniform float uAmbientLight;
 uniform sampler2D uPrevious;
 uniform vec2 uPreviousDimension;
 uniform bool uUseBarrycentricLines;
@@ -60,7 +61,7 @@ void main() {
     if( distance > uVisibleDistance ) {
         fogginess = 0.;
     }
-    float lighting = min(1.0, max(0., (uCameraLightDistance-distance) / uCameraLightDistance));
+    float lighting = min(1.0, max(0., (uCameraLightDistance-distance) / uCameraLightDistance) + uAmbientLight);
     float tileness = 1.;
     if( uUseBarrycentricLines ) {
         vec3 d = fwidth(vBarrycentricCoordinate);
@@ -211,6 +212,7 @@ function initShowPlay(
     let uLineWidth = gl.getUniformLocation(shaderProgram, 'uLineWidth');
     let uVisibleDistance = gl.getUniformLocation(shaderProgram, 'uVisibleDistance');
     let uCameraLightDistance = gl.getUniformLocation(shaderProgram, 'uCameraLightDistance');
+    let uAmbientLight = gl.getUniformLocation(shaderProgram, 'uAmbientLight');
     let uPrevious = gl.getUniformLocation(shaderProgram, 'uPrevious');
     let uPreviousDimension = gl.getUniformLocation(shaderProgram, 'uPreviousDimension');
     let uUseBarrycentricLines = gl.getUniformLocation(shaderProgram, 'uUseBarrycentricLines');
@@ -230,6 +232,7 @@ function initShowPlay(
         gl.uniformMatrix4fv(uViewMatrix, false, viewMatrix);
         gl.uniformMatrix4fv(uPreviousViewMatrix, false, previousViewMatrix);
         gl.uniform1f(uCameraLightDistance, 8);
+        gl.uniform1f(uAmbientLight, .02);
 
 
         // draw all the entities
@@ -254,7 +257,7 @@ function initShowPlay(
                 let rotationMatrixY = matrix4Rotate(0, 1, 0, entity.ry);
                 let rotationMatrixZ = matrix4Rotate(0, 0, 1, entity.rz);
                 let modelMatrix = matrix4MultiplyStack([translationMatrix, rotationMatrixX, rotationMatrixY, rotationMatrixZ]);
-                    
+
                 gl.uniformMatrix4fv(uModelMatrix, false, modelMatrix);
 
             } else {
@@ -263,6 +266,7 @@ function initShowPlay(
             }
 
             gl.drawElements(gl.TRIANGLES, entity.indicesCount, FLAG_GL_16_BIT_INDEXES?gl.UNSIGNED_SHORT:gl.UNSIGNED_BYTE, 0);
+
         }
 
     }
@@ -284,8 +288,14 @@ function initShowPlay(
         window.onresize = resize as any;
 
         let world = new World(activeTilesWidth, activeTilesHeight, chunkWidth, chunkHeight, chunkGenerator, monsterGenerator);
-        for( let i=0; i<3; i++ ) {
-            let monster = monsterGenerator((Math.random() * 9999999) | 0, (i*8)%13 - 4, -5 - i, 1+i);
+        let entityCount = 20;
+        for( let i=0; i<entityCount; i++ ) {
+            let angle = Math.PI * 2 * i / entityCount;
+            let r = Math.random() * 20 + 4;
+            let x = Math.cos(angle) * r;
+            let y = Math.sin(angle) * r;
+            let z = Math.random() * 2 + 1;
+            let monster = monsterGenerator((Math.random() * 9999999) | 0, x, y, z);
             world.addEntity(monster);    
         }
 
