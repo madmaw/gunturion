@@ -41,7 +41,7 @@ class World {
     }
 
     public update(amt: number) {
-        let averageError = Math.pow(2, -30);
+        let averageError = 1e-9;
 
         this.age += amt;
         let i=this.activeMonsters.length;
@@ -63,7 +63,7 @@ class World {
                 if( !activeMonster.ignoreGravity ) {
                     activeMonster.vz -= amt * .00001;
                 }
-                let done: boolean = activeMonster.update(this, amt);
+                let done = activeMonster.update(this, amt);
                 if( done ) {
                     // it wants to be removed
                     this.removeEntity(activeMonster);
@@ -133,12 +133,8 @@ class World {
                                             suggestedPosition = vector3TransformMatrix4(planeIntersection[0], planeIntersection[1], activeMonster.radius, surface.pointsToWorld);
                                         }    
                                     }
-
                                 }                                
-
-
                             }
-                            
                         }
                         if( collisionTime != null && (minCollisionTime == null || minCollisionTime > collisionTime) ) {
                             minCollisionEntity = collisionEntity;
@@ -159,34 +155,61 @@ class World {
                             activeMonster.y = suggestedPosition[1];
                             activeMonster.z = suggestedPosition[2];
                         }
-    
                         if( minCollisionEntity.isMonster ) {
-                            //this.removeEntity(minCollisionEntity);
-                            minCollisionEntity.deathAge = minCollisionEntity.age;
-                            minCollisionEntity.vx = activeMonster.vx = minCollisionEntity.vy = activeMonster.vy = minCollisionEntity.vz = activeMonster.vz = 0;
-                            //this.removeEntity(activeMonster);
-                            activeMonster.deathAge = activeMonster.age;
-                            done = true;
+                            this.enactCollision(activeMonster, minCollisionEntity);
+                            this.enactCollision(minCollisionEntity, activeMonster);
+                            // if it's dead, remove it
+                            if( minCollisionEntity.deathAge ) {
+                                this.removeEntityPosition(minCollisionEntity);
+                            }
                         } else {
                             //activeMonster.vx = activeMonster.vy = activeMonster.vz = 0;
                             // bounce
                             let surface = minCollisionEntity as Surface;
+                            let collisionResponse = activeMonster.collisionResponse(minCollisionEntity);
                             let velocity = vector3TransformMatrix4(activeMonster.vx, activeMonster.vy, activeMonster.vz, surface.worldToPointsRotation);
-                            
-                            let adjustedVelocity = vector3TransformMatrix4(velocity[0], velocity[1], -velocity[2] * .1, surface.pointsToWorldRotation);
+                            switch(collisionResponse) {
+                                case COLLISION_RESPONSE_BOUNCE:
+                                    velocity[2] *= -1; 
+                                    break;
+                                case COLLISION_RESPONSE_DIE:
+                                    activeMonster.deathAge = activeMonster.age;
+                                    velocity = [0, 0, 0];
+                                    break;
+                                case COLLISION_RESPONSE_SLIDE:
+                                    velocity[2] *= -.01;
+                                    break;
+                            }
+                            let adjustedVelocity = vector3TransformMatrix4(velocity[0], velocity[1], velocity[2], surface.pointsToWorldRotation);
                             activeMonster.vx = adjustedVelocity[0];
                             activeMonster.vy = adjustedVelocity[1];
                             activeMonster.vz = adjustedVelocity[2];
-
                         }
-    
-    
+                        done = activeMonster.deathAge;
                     } else {
                         this.addEntityPosition(activeMonster);
                         done = true;
                     }
                 }
             }
+        }
+
+    }
+
+    private enactCollision(monster: Monster, withMonster: Monster) {
+        let minCollisionResponse = monster.collisionResponse(withMonster);
+        switch(minCollisionResponse) {
+            case COLLISION_RESPONSE_DIE:
+                monster.deathAge = monster.age;
+            case COLLISION_RESPONSE_SLIDE:
+                monster.vx = monster.vy = monster.vz = 0;
+                break;
+            case COLLISION_RESPONSE_BOUNCE:
+                // not exactly a great bounce collision response, but I'm pretty sure this never happens
+                monster.vx *= -1; 
+                monster.vy *= -1;
+                monster.vz *= -1;
+                break;
         }
 
     }

@@ -7,3 +7,6 @@ const FLAG_GL_16_BIT_INDEXES = true;
 const FLAG_CAP_ENDS = true;
 const FLAG_CLEAN_UP_ON_RESIZE = true;
 const FLAG_CLEANUP_EVENT_HANDLERS_ON_DESTROY = false;
+const FLAG_MUZZLE_FLASH = true;
+const FLAG_DEATH_ANIMATION = true;
+const FLAG_ALLOW_JUMPING = true;

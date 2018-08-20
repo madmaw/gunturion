@@ -1,3 +1,7 @@
+let COLLISION_RESPONSE_SLIDE = 0;
+let COLLISION_RESPONSE_DIE = 1;
+let COLLISION_RESPONSE_BOUNCE = 2;
+let COLLISION_RESPONSE_NONE = 0;
 
 interface EntityBase {
     id: number;
@@ -28,6 +32,7 @@ interface Monster extends EntityBase {
     barycentricCoordinatesBuffer: WebGLBuffer;
     centerPointsBuffer: WebGLBuffer;
     update(world: World, diff: number): any;
+    collisionResponse(entity: Entity): number;
     visible: number;
     cycleLength: number;
     side?: number;
@@ -63,16 +68,16 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
 
     let fillColors = [
         [.8, .3, .3], 
-        [.3, 1, .3], 
+        [.2, .5, .2], 
         [.3, .3, .8], 
         [.1, .4, .4]  
     ]
 
     let lineColors = [
-        [1, .3, .3], 
-        [.3, 1, .3], 
-        [.3, .3, 1], 
-        [.2, 1, 1]
+        [1, .2, .2], 
+        [.2, 1, .2], 
+        [.2, .2, 1], 
+        [0, 1, 1]
     ]
 
     let bounds = function(this: Monster): Rect3 {
@@ -150,14 +155,15 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
         let indices: number[] = [];
         let barrycentricCoordinates: number[] = [];
         let centerPoints: number[] = [];
-        let offsets: number[] = []; // multiplier, timing offset
 
         let ringPointCounts: number[] = [];
         let ringAngles: number[] = [];
         let ringDiv: number;
         let angleYOffset: number;
         let tipZ: number;
-        let pointyTip = (rings % 2 && minPointCount > 3 || !equalRingOffset) && allowPointyTip || rings == 1;
+        let pointyTip = (rings % 2 && minPointCount > 3 
+            || !equalRingOffset) && allowPointyTip 
+            || rings == 1;
         if( pointyTip ) {
             ringDiv = rings + 1;
             angleYOffset = Math.PI/ringDiv;
@@ -398,7 +404,17 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
             x: x, 
             y: y, 
             z: z, 
-            update: updater, 
+            update: updater,
+            collisionResponse: function(entity: Entity) {
+                let result: number;
+                if( entity.isMonster && entity.side > this.side ) {
+                    result = COLLISION_RESPONSE_DIE;
+                } else {
+                    result =  COLLISION_RESPONSE_SLIDE;
+                }
+                return result;
+            },
+            side: 0,
             age: 0, 
             rx: rx, 
             ry: ry, 
