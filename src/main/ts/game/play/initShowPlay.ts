@@ -1,27 +1,32 @@
 let vertexShaderSource = `
 precision lowp float;
-attribute vec3 aVertexPosition;
-attribute vec3 aBarrycentricCoordinate;
+attribute vec4 aVertexPosition;
+attribute vec4 aOffsetPoint;
+attribute vec4 aBarrycentricCoordinate;
 uniform mat4 uModelMatrix;
 uniform mat4 uViewMatrix;
 uniform mat4 uPreviousViewMatrix;
 uniform mat4 uProjectionMatrix;
 uniform bool uUseBarrycentricLines;
+uniform float uCycleRadians;
+uniform float uOffsetMultiplier;
 varying vec3 vBarrycentricCoordinate;
 varying vec3 vRelativePosition;
 varying vec2 vGridCoordinate;
 varying vec4 vScreenCoordinate;
 void main() {
-    vec4 adjustedVertexPosition = vec4(aVertexPosition, 1.0);
-    vec4 vertexPosition = uModelMatrix * adjustedVertexPosition;
+    vec3 adjustedVertexPosition;
+    if( uUseBarrycentricLines ) {
+        adjustedVertexPosition = aVertexPosition.xyz + aVertexPosition.w * aVertexPosition.xyz * sin(uCycleRadians + aBarrycentricCoordinate.w) + uOffsetMultiplier * aOffsetPoint.w * aOffsetPoint.xyz;
+        vBarrycentricCoordinate = aBarrycentricCoordinate.xyz;
+    } else {
+        adjustedVertexPosition = aVertexPosition.xyz;
+    }
+    
+    vec4 vertexPosition = uModelMatrix * vec4(adjustedVertexPosition, 1.);
     vec4 relativeVertexPosition = uViewMatrix * vertexPosition;
     vec4 screenPosition = uProjectionMatrix * relativeVertexPosition;
-    if( uUseBarrycentricLines ) {
-        vBarrycentricCoordinate = aBarrycentricCoordinate;
-    } else {
-        // TODO adjust by line normal
-        vGridCoordinate = vertexPosition.xy;
-    }
+    vGridCoordinate = vertexPosition.xy;
     vRelativePosition = relativeVertexPosition.xyz;    
     vScreenCoordinate = uProjectionMatrix * uPreviousViewMatrix * vertexPosition;
     gl_Position = screenPosition;
@@ -47,7 +52,7 @@ varying vec4 vScreenCoordinate;
 vec4 getSampleColor(in vec4 currentColor, in vec2 screenCoordinate, inout float count) {
     vec4 previousColor = texture2D(uPrevious, screenCoordinate);
     float amt = (previousColor.a  - currentColor.a+ 1.) /2.;
-    count += amt * (.3 + currentColor.a/2.5);
+    count += amt * (.3 + currentColor.a/2.3);
     return mix(currentColor, previousColor, amt);    
 }
 
@@ -112,7 +117,9 @@ function initShowPlay(
     chunkWidth: number, 
     chunkHeight: number, 
     chunkGenerator: ChunkGenerator, 
-    monsterGenerator: MonsterGenerator
+    monsterGenerator: MonsterGenerator, 
+    deathAnimationTime: number, 
+    fogColor: Vector3
 ): ShowPlay {
     let canvas = document.getElementById('b') as HTMLCanvasElement;
     let context = canvas.getContext('2d');
@@ -123,15 +130,16 @@ function initShowPlay(
     let textureImageData: ImageData;
     let sourceTexture: WebGLTexture;
     let targetTexture: WebGLTexture;
-    let depthTexture: WebGLTexture;
-    let frameBuffer = gl.createFramebuffer();
-    let depthBuffer = gl.createRenderbuffer();
+    let frameBuffer: WebGLFramebuffer;
+    let depthBuffer: WebGLRenderbuffer;
 
     let projectionMatrix: Matrix4;
     let canvasWidth: number;
     let canvasHeight: number;
 
-    let resize = function(cleanUpOnly?: boolean) {
+
+    // NOTE: regenerate should be a boolean really, but onresize passes some truthy value
+    let resize = function(regenerate?: any) {
 
         canvasWidth = window.innerWidth;
         canvasHeight = window.innerHeight;
@@ -141,26 +149,33 @@ function initShowPlay(
 
         textureData = new Uint8Array(canvasWidth * canvasHeight * 4);
         textureImageData = context.createImageData(canvasWidth, canvasHeight);
-        if( sourceTexture ) {
+        if( sourceTexture && FLAG_CLEAN_UP_ON_RESIZE ) {
             gl.deleteTexture(sourceTexture);
             gl.deleteTexture(targetTexture);
-            gl.deleteTexture(depthTexture);
+            gl.deleteFramebuffer(frameBuffer);
+            gl.deleteRenderbuffer(depthBuffer);
         }
-        if( !cleanUpOnly ) {
+        if( regenerate ) {
             sourceTexture = webglCreateTexture(gl, canvasWidth, canvasHeight);
             targetTexture = webglCreateTexture(gl, canvasWidth, canvasHeight);    
-
+            frameBuffer = gl.createFramebuffer();
+            depthBuffer = gl.createRenderbuffer();
         }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+    
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, canvasWidth, canvasHeight);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
 
         projectionMatrix = matrix4Perspective(Math.PI/4, canvasWidth/canvasHeight, 1, visibleDistance);
-
-        // is this required?
+        let flipMatrix = matrix4Scale(1, -1, 1);
+        projectionMatrix = matrix4Multiply(projectionMatrix, flipMatrix);
+    
+        // pretty sure we didn't use to need this?
         gl.viewport(0, 0, canvasWidth, canvasHeight);
     }
 
-    // turn on the extension we use
+    // turn on the extension(s) we use
     gl.getExtension('OES_standard_derivatives');
     // gl.getExtension( "WEBKIT_WEBGL_depth_texture" );
     // gl.getExtension( "MOZ_WEBGL_depth_texture" );
@@ -177,7 +192,9 @@ function initShowPlay(
     gl.clearColor(0, 0, 0, 0);
     // only draw front faces
     if( FLAG_GL_CULL_FACES ) {
-        gl.enable(gl.CULL_FACE);
+        if( FLAG_GL_CULL_EXPLOSIONS ) {
+            gl.enable(gl.CULL_FACE);
+        }
         gl.cullFace(gl.BACK);
     }
 
@@ -194,14 +211,13 @@ function initShowPlay(
         throw 'program link error';
     }
     gl.useProgram(shaderProgram);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer);
-    gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
     
 
 
     // get uniforms and attributes
     let aVertexPosition = gl.getAttribLocation(shaderProgram, 'aVertexPosition');
     let aBarrycentricCoordinate = gl.getAttribLocation(shaderProgram, 'aBarrycentricCoordinate');
+    let aOffsetPoint = gl.getAttribLocation(shaderProgram, 'aOffsetPoint');
 
     let uProjectionMatrix = gl.getUniformLocation(shaderProgram, 'uProjectionMatrix');
     let uModelMatrix = gl.getUniformLocation(shaderProgram, 'uModelMatrix');
@@ -216,6 +232,8 @@ function initShowPlay(
     let uPrevious = gl.getUniformLocation(shaderProgram, 'uPrevious');
     let uPreviousDimension = gl.getUniformLocation(shaderProgram, 'uPreviousDimension');
     let uUseBarrycentricLines = gl.getUniformLocation(shaderProgram, 'uUseBarrycentricLines');
+    let uCycleRadians = gl.getUniformLocation(shaderProgram, 'uCycleRadians');
+    let uOffsetMultiplier = gl.getUniformLocation(shaderProgram, 'uOffsetMultiplier');
 
     gl.uniform1f(uVisibleDistance, visibleDistance);
     
@@ -231,39 +249,69 @@ function initShowPlay(
         gl.uniformMatrix4fv(uProjectionMatrix, false, projectionMatrix);
         gl.uniformMatrix4fv(uViewMatrix, false, viewMatrix);
         gl.uniformMatrix4fv(uPreviousViewMatrix, false, previousViewMatrix);
-        gl.uniform1f(uCameraLightDistance, 8);
-        gl.uniform1f(uAmbientLight, .02);
-
+        gl.uniform1f(uCameraLightDistance, 12);
+        gl.uniform1f(uAmbientLight, .05);
 
         // draw all the entities
         for( let entity of world.allEntities ) {
+            if( FLAG_GL_CULL_EXPLOSIONS ) {
+                gl.enable(gl.CULL_FACE);
+            }
 
-            webglBindAttributeBuffer(gl, entity.positionBuffer, aVertexPosition, 3);
+            webglBindAttributeBuffer(gl, entity.positionBuffer, aVertexPosition, 4);
    
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, entity.indicesBuffer);
 
 
 
             let translationMatrix = matrix4Translate(entity.x, entity.y, entity.z);
-            gl.uniform3fv(uFillColor, entity.fillColor);
-            gl.uniform3fv(uLineColor, entity.lineColor);
+            let lineColor = entity.lineColor;
+            let fillColor = entity.fillColor;
             gl.uniform1f(uLineWidth, entity.lineWidth);
             gl.uniform1i(uUseBarrycentricLines, entity.isMonster);
 
             if( entity.isMonster ) {
 
-                webglBindAttributeBuffer(gl, entity.barycentricCoordinatesBuffer, aBarrycentricCoordinate, 3);
-                let rotationMatrixX = matrix4Rotate(1, 0, 0, entity.rx);
-                let rotationMatrixY = matrix4Rotate(0, 1, 0, entity.ry);
-                let rotationMatrixZ = matrix4Rotate(0, 0, 1, entity.rz);
-                let modelMatrix = matrix4MultiplyStack([translationMatrix, rotationMatrixX, rotationMatrixY, rotationMatrixZ]);
+                webglBindAttributeBuffer(gl, entity.barycentricCoordinatesBuffer, aBarrycentricCoordinate, 4);
+                webglBindAttributeBuffer(gl, entity.centerPointsBuffer, aOffsetPoint, 4); 
+                let rotationMatrixX = matrix4Rotate(0, 1, 0, -entity.rx);
+                let rotationMatrixY = matrix4Rotate(1, 0, 0, -entity.ry);
+                let rotationMatrixZ = matrix4Rotate(0, 0, 1, -entity.rz);
 
+                let matrixStack = [translationMatrix, rotationMatrixZ, rotationMatrixY, rotationMatrixX, entity.specialMatrix];
+
+                let cycle = entity.age / entity.cycleLength;
+                let offsetMultiplier = 0;
+                if( entity.deathAge ) {
+                    if( !FLAG_GL_CULL_EXPLOSIONS ) {
+                        gl.disable(gl.CULL_FACE);
+                    }
+                    let b = (entity.age - entity.deathAge)/deathAnimationTime;
+                    let bsq = b * b;
+                    let scale = 1 - bsq*.99;
+                    offsetMultiplier = bsq * 3 / scale; 
+                    // explode away from the camera
+                    //matrixStack.splice(1, 0, matrix4Scale(1 - b * sinZ, 1 - b * cosZ, 1 - b));
+                    matrixStack.splice(1, 0, matrix4Scale(scale, scale, scale));
+                    lineColor = vector3Mix(fogColor, lineColor, bsq);
+                    fillColor = vector3Mix(fogColor, fillColor, bsq);
+                    // do one last animation
+                    cycle = entity.deathAge / entity.cycleLength + (entity.age - entity.deathAge)/deathAnimationTime;
+                }
+                gl.uniform1f(uCycleRadians, cycle * Math.PI * 2);
+                gl.uniform1f(uOffsetMultiplier, offsetMultiplier);
+
+                let modelMatrix = matrix4MultiplyStack(matrixStack);
                 gl.uniformMatrix4fv(uModelMatrix, false, modelMatrix);
+
 
             } else {
                 let surface = entity as Surface;
                 gl.uniformMatrix4fv(uModelMatrix, false, translationMatrix);
             }
+
+            gl.uniform3fv(uFillColor, fillColor);
+            gl.uniform3fv(uLineColor, lineColor);
 
             gl.drawElements(gl.TRIANGLES, entity.indicesCount, FLAG_GL_16_BIT_INDEXES?gl.UNSIGNED_SHORT:gl.UNSIGNED_BYTE, 0);
 
@@ -275,27 +323,32 @@ function initShowPlay(
         let animationFrameHandle: number;
         let destroy = function() {
             canvas.className = '';
-            window.onresize = null;
+            if( FLAG_CLEANUP_EVENT_HANDLERS_ON_DESTROY ) {
+                window.onresize = null;
+                window.onkeydown = null;
+                window.onkeyup = null;
+                canvas.onmousedown = null;
+                canvas.onmouseup = null;
+            }
             window.cancelAnimationFrame(animationFrameHandle);
-            resize(true);
+            resize();
         }
-    
     
         canvas.className = 'v';
     
-        resize();
+        resize(1); 
     
-        window.onresize = resize as any;
+        window.onresize = resize;
 
-        let world = new World(activeTilesWidth, activeTilesHeight, chunkWidth, chunkHeight, chunkGenerator, monsterGenerator);
-        let entityCount = 20;
+        let world = new World(activeTilesWidth, activeTilesHeight, chunkWidth, chunkHeight, chunkGenerator, monsterGenerator, deathAnimationTime);
+        let entityCount = 40;
         for( let i=0; i<entityCount; i++ ) {
             let angle = Math.PI * 2 * i / entityCount;
-            let r = Math.random() * 20 + 4;
+            let r = Math.random() * visibleDistance*.9 + 3;
             let x = Math.cos(angle) * r;
             let y = Math.sin(angle) * r;
             let z = Math.random() * 2 + 1;
-            let monster = monsterGenerator((Math.random() * 9999999) | 0, x, y, z);
+            let monster = monsterGenerator((Math.random() * 9999999) | 0, x, y, z, 1);
             world.addEntity(monster);    
         }
 
@@ -304,19 +357,141 @@ function initShowPlay(
         
         let dx = 0;
         let dy = 0;
+        let shooting: number;
+        let lastRunningRelease: number;
+        let keyStates: {[_:number]: number } = {
+            38: 0, 
+            87: 0
+        };
         canvas.onmousedown = function(e: MouseEvent) {
             if( !e.button ) {
-                canvas.requestPointerLock();
-            }
+                if( document.pointerLockElement == canvas ) {
+                    shooting = world.age;
+                } else {
+                    canvas.requestPointerLock();
+                }
+            } 
         }
-    
+        canvas.onmouseup = function(e: MouseEvent) {
+            shooting = 0;
+        }
+     
         canvas.onmousemove = function(e: MouseEvent) {
             if( document.pointerLockElement == canvas ) {
-                dx += e.movementX;
-                dy += e.movementY;    
+                
+                dx -= e.movementX;
+                dy = Math.min(canvasHeight/4, Math.max(-canvasHeight/4, dy - e.movementY));    
+            }
+        }
+        window.onkeydown = function(e: KeyboardEvent) {
+            let keyCode = e.keyCode;
+            if( !keyStates[keyCode] ) {
+                keyStates[keyCode] = world.age;
+            }
+        }
+
+        window.onkeyup = function(e: KeyboardEvent) {
+            let keyCode = e.keyCode;
+            keyStates[keyCode] = 0;
+            if( keyCode == 16 ) {
+                lastRunningRelease = world.age;
             }
         }
     
+        // generate something gun-like
+        let player = monsterGenerator(25, 0, 0, 0, 1);
+        let walkDistance = 0;
+        // TODO can remove once we get our model under control
+        player.ry = 0;
+        // end TODO
+        player.visible = 0;
+        player.side = 1;
+        player.lineColor = [.7, .7, .3];
+        player.fillColor = [.2, .2, 0];
+        // make it look like a gun
+        let scale = .2;
+        
+        player.specialMatrix = matrix4MultiplyStack([
+            matrix4Translate(player.radius/3, -player.radius/3, 0), 
+            matrix4Rotate(0, 1, 0, Math.PI/2), 
+            matrix4Scale(scale, scale, 3)
+        ]);
+        //player.specialMatrix = matrix4Translate(2, 0, -player.radius/2);
+        let lastShot = 0;
+        let shotInterval = 300;
+        player.update = function(this: Monster, world: World, amt: number) {
+            let left = keyStates[37] || keyStates[65];
+            let right = keyStates[39] || keyStates[68];
+            let forward = Math.max(keyStates[38], keyStates[87]);
+            let backward = keyStates[40] || keyStates[83];
+            let running = keyStates[16] || forward < lastRunningRelease;
+            
+            let baseVelocity = 0.004;
+            let forwardVelocity = baseVelocity;
+            if( running ) {
+                forwardVelocity*=2;
+            }
+
+            player.rx = dy * 3 / canvasHeight; 
+            player.rz = dx * 3 / canvasWidth;
+
+            let sinZ = Math.sin(player.rz);
+            let cosZ = Math.cos(player.rz);
+            let sinZSide = Math.sin(player.rz - Math.PI/2);
+            let cosZSide = Math.cos(player.rz - Math.PI/2);
+
+            let vx = 0;
+            let vy = 0;
+            if( right ) {
+                vx += baseVelocity * cosZSide;
+                vy += baseVelocity * sinZSide;
+            }
+            if( left ) {
+                vx -= baseVelocity * cosZSide;
+                vy -= baseVelocity * sinZSide;
+            }
+            if( forward ) {
+                vx += forwardVelocity * cosZ;
+                vy += forwardVelocity * sinZ;
+                walkDistance += forwardVelocity * amt;
+            }
+            if( backward ) {
+                vx -= baseVelocity * cosZ;
+                vy -= baseVelocity * sinZ;
+                walkDistance -= baseVelocity * amt;
+            }
+            player.vx = vx;
+            player.vy = vy;;
+
+            if( shooting ) {
+                if( this.age > lastShot + shotInterval ) {
+                    let sinX = Math.sin(player.rx);
+                    let cosX = Math.cos(player.rx);
+                    if( lastShot + shotInterval + amt > this.age ) {
+                        lastShot = lastShot + shotInterval;
+                    } else {
+                        lastShot = this.age;
+                    }
+                    // shoot
+                    let bullet = monsterGenerator(818, this.x + this.radius*cosZSide/3 + this.radius*cosZ*3, this.y + this.radius*sinZSide/3 + this.radius*sinZ*3, this.z + sinX * this.radius*3, .2);
+                    let bulletVelocity = 0.05; 
+                    bullet.update = function(this: Monster) {
+                        return this.age > 9999;
+                    }
+                    bullet.side = this.side;
+                    
+                    bullet.vx = cosX * cosZ * bulletVelocity;
+                    bullet.vy = cosX * sinZ * bulletVelocity;
+                    bullet.vz = sinX * bulletVelocity;
+                    bullet.fillColor = this.fillColor;
+                    bullet.lineColor = this.lineColor;
+                    bullet.ignoreGravity = 1;
+
+                    world.addEntity(bullet);
+                }
+            }
+        }
+        world.addEntity(player);
     
 
         let previousViewMatrix = matrix4Identity();
@@ -331,17 +506,15 @@ function initShowPlay(
             gl.bindTexture(gl.TEXTURE_2D, targetTexture);
             gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, targetTexture, 0);
 
-            let xrot = dy * 2 / canvasWidth - Math.PI/2; 
-            let zrot = dx * 3 / canvasWidth;
+            world.setCameraPosition(player.x, player.y, player.z + player.radius*.8, player.rx + Math.PI/2, player.ry, player.rz - Math.PI/2);
 
-            world.cameraRotationZ = zrot;
-            world.cameraRotationX = xrot;
-
+            // adjust for walk animation
+            let walkTranslationMatrix = matrix4Translate(Math.sin(walkDistance)/8, 0, Math.abs(Math.cos(walkDistance)/8));
             let rotationMatrixX = matrix4Rotate(1, 0, 0, world.cameraRotationX);
             let rotationMatrixY = matrix4Rotate(0, 1, 0, world.cameraRotationY);
             let rotationMatrixZ = matrix4Rotate(0, 0, 1, world.cameraRotationZ);
             let translationMatrix = matrix4Translate(-world.cameraX, -world.cameraY, -world.cameraZ);
-            let viewMatrix = matrix4MultiplyStack([rotationMatrixX, rotationMatrixY, rotationMatrixZ, translationMatrix]);
+            let viewMatrix = matrix4MultiplyStack([rotationMatrixX, rotationMatrixY, walkTranslationMatrix, rotationMatrixZ, translationMatrix]);
 
 
             render(world, projectionMatrix, viewMatrix, previousViewMatrix);
@@ -365,7 +538,7 @@ function initShowPlay(
 
             context.globalCompositeOperation = 'destination-over';
 
-            context.fillStyle = "#202" ;
+            context.fillStyle = `rgb(${fogColor[0] * 255}, ${fogColor[1] * 255}, ${fogColor[2] * 255})` ;
             context.fillRect(0, 0, canvasWidth, canvasHeight);
 
         }   

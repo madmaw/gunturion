@@ -1,5 +1,6 @@
 
 interface EntityBase {
+    id: number;
     x: number;
     y: number;
     z: number;
@@ -22,13 +23,15 @@ interface Monster extends EntityBase {
     ry: number; 
     rz: number;
     age: number;
-    positions: number[];
-    indices: number[];
+    specialMatrix?: Matrix4;
+    deathAge?: number;
     barycentricCoordinatesBuffer: WebGLBuffer;
-    update(world: World, diff: number): void;
+    centerPointsBuffer: WebGLBuffer;
+    update(world: World, diff: number): any;
     visible: number;
-    
-
+    cycleLength: number;
+    side?: number;
+    ignoreGravity?: number;
 }
 
 interface Surface extends EntityBase {
@@ -36,6 +39,10 @@ interface Surface extends EntityBase {
     normal: Vector3;
     gridNormal: Vector3;
     points: Vector2[];
+    worldToPoints: Matrix4;
+    pointsToWorld: Matrix4;
+    worldToPointsRotation: Matrix4;
+    pointsToWorldRotation: Matrix4;
 }
 
 type Entity = Monster | Surface;
@@ -45,24 +52,27 @@ interface MonsterGenerator {
         seed: number,
         x: number, 
         y: number, 
-        z: number
+        z: number, 
+        radius: number
     ): Monster;
 }
 
 function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
 
+    let nextId = 0;
+
     let fillColors = [
         [.8, .3, .3], 
-        [.3, .8, .3], 
+        [.3, 1, .3], 
         [.3, .3, .8], 
         [.1, .4, .4]  
     ]
 
     let lineColors = [
-        [.9, .5, .5], 
-        [.5, .9, .5], 
-        [.4, .4, 1], 
-        [.4, .8, .8]
+        [1, .3, .3], 
+        [.3, 1, .3], 
+        [.3, .3, 1], 
+        [.2, 1, 1]
     ]
 
     let bounds = function(this: Monster): Rect3 {
@@ -95,7 +105,8 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
         seed: number,
         x: number, 
         y: number, 
-        z: number
+        z: number, 
+        radius: number
     ): Monster {
 
         let s = [seed];
@@ -109,17 +120,28 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
         let equalRingOffset = shift(1, s);
         //equalRingOffset = 1;
         let allowPointyTip = shift(1, s);
-        let pattern = shift(4, s);        
+        let cycleLength = (shift(5, s)+32) * 66;  
+        let maxSpikiness = (shift(2, s))/(14 - rings);
+        
+        let cycleBase = (shift(4, s)) * Math.PI * 2/minPointCount;
 
-        let radius = 1;
+        let patternBits = 2;
+        let pattern = shift(patternBits, s);        
+
+        // reset
+        s = [seed];
+
         let colorIndex = shift(2, s);
         let fillColor = fillColors[colorIndex];
         let lineColor = lineColors[colorIndex];
         let lineWidth = 2;
+
+        let rx = shift(1, s) * Math.PI/2;
+        let ry = shift(1, s) * Math.PI/2;        
+
         let updater = function(this: Monster, world: World, diff: number) {
-            this.age += diff;
-            this.rz = this.age / 1000;
-            this.rx = -this.age / 10000;
+            this.rz = this.age / 5000;
+            //this.rx = -this.age / 10000;
             //this.y -= this.age / 1000000;
         }
 
@@ -127,6 +149,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
         let positions: number[] = [];
         let indices: number[] = [];
         let barrycentricCoordinates: number[] = [];
+        let centerPoints: number[] = [];
         let offsets: number[] = []; // multiplier, timing offset
 
         let ringPointCounts: number[] = [];
@@ -163,7 +186,14 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
             let nextRingOffset = ringOffset + equalRingOffset;
             let ringRadius = Math.sin(ringAngleY) * radius * horizontalScale/Math.cos(Math.PI/ringPointCount);
             let ringZ = Math.cos(ringAngleY) * radius;
+            
             for( let point = 0; point < ringPointCount; point ++ ) {
+                let cycleOffset = (point + ring) * cycleBase;
+                let nextCycleOffset = ((point+1)%ringPointCount + ring) * cycleBase;
+                let ringSpikiness = maxSpikiness*Math.sin(ringAngleY);
+                let spikiness = (pattern >> (point)%patternBits)&1?ringSpikiness:0;
+                let nextSpikiness = (pattern >> ((point+1)%ringPointCount)%patternBits)&1?ringSpikiness:0;
+
                 let angleZ = ringOffset * Math.PI / ringPointCount + point * Math.PI*2/ringPointCount;  
                 let nextAngleZ = angleZ + Math.PI*2/ringPointCount;
                 let l = indices.length;
@@ -173,7 +203,15 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
                 let nextRy = Math.sin(nextAngleZ) * ringRadius;
                 if( ring < rings - 1 ) {
                     let nextRingPointCount = ringPointCounts[ring+1];
+
                     let nextRingAngleY = ringAngles[ring+1];
+                    
+                    let nextRingCycleOffset = (point + ring + 1) * cycleBase;
+                    let nextRingNextCycleOffset = ((point + 1)%nextRingPointCount + ring + 1) * cycleBase;
+                    let nextRingRingSpikiness = maxSpikiness * Math.sin(nextRingAngleY);
+                    let nextRingSpikiness = (pattern >> (point)%patternBits)&1?nextRingRingSpikiness:0;
+                    let nextRingNextSpikiness = (pattern >> ((point + 1)%nextRingPointCount)%patternBits)&1?nextRingRingSpikiness:0;
+    
                     let nextRingRadius = Math.sin(nextRingAngleY) * radius * horizontalScale/Math.cos(Math.PI/nextRingPointCount);
                     let nextRingZ = Math.cos(nextRingAngleY) * radius;
                     if( ringPointCount == nextRingPointCount ) {
@@ -183,33 +221,53 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
                         let nextRingRy = Math.sin(nextRingAngleZ) * nextRingRadius;
                         let nextRingNextRx = Math.cos(nextRingNextAngleZ)*nextRingRadius;
                         let nextRingNextRy = Math.sin(nextRingNextAngleZ) * nextRingRadius;
+
+                        let cx1 = (rx + nextRx + nextRingNextRx) / 3;
+                        let cy1 = (ry + nextRy + nextRingNextRy) / 3;
+                        let cz1 = (ringZ * 2 + nextRingZ) / 3;
+
+                        let cx2 = (nextRx + nextRingRx + nextRingNextRx) / 3;
+                        let cy2 = (nextRy + nextRingRy + nextRingNextRy) / 3;
+                        let cz2 = (ringZ + nextRingZ * 2) / 3;
+
                         indices.push(
                             // face 1
-                            l++, l++, l++,
+                            l++, l++, l++, 
                             // face 2
                             l++, l++, l++
 
                         );
                         positions.push(
                             // face 1
-                            nextRx, nextRy, ringZ, 
-                            rx, ry, ringZ, 
-                            nextRingRx, nextRingRy, nextRingZ,
+                            nextRx, nextRy, ringZ, nextSpikiness,  
+                            rx, ry, ringZ, spikiness,  
+                            nextRingRx, nextRingRy, nextRingZ, nextRingSpikiness,  
                             // face 2
-                            nextRx, nextRy, ringZ,
-                            nextRingRx, nextRingRy, nextRingZ,
-                            nextRingNextRx, nextRingNextRy, nextRingZ,
+                            nextRx, nextRy, ringZ, nextSpikiness,  
+                            nextRingRx, nextRingRy, nextRingZ, nextRingSpikiness,  
+                            nextRingNextRx, nextRingNextRy, nextRingZ, nextRingNextSpikiness,  
+                        );
+                        let r1 = Math.random();
+                        let r2 = Math.random();
+                        centerPoints.push(
+                            cx1, cy1, cz1, r1,
+                            cx1, cy1, cz1, r1, 
+                            cx1, cy1, cz1, r1, 
+
+                            cx2, cy2, cz2, r2, 
+                            cx2, cy2, cz2, r2, 
+                            cx2, cy2, cz2, r2, 
                         );
                         if( equalRingOffset ) {
                             barrycentricCoordinates.push(
                                 // face 1
-                                1, 0, 0, 
-                                0, 1, 0, 
-                                0, 0, 1, 
+                                1, 0, 0, nextCycleOffset, 
+                                0, 1, 0, cycleOffset, 
+                                0, 0, 1, nextRingCycleOffset, 
                                 // face 2
-                                1, 0, 0, 
-                                0, 1, 0, 
-                                0, 0, 1
+                                1, 0, 0, nextCycleOffset, 
+                                0, 1, 0, nextRingCycleOffset, 
+                                0, 0, 1, nextRingNextCycleOffset,
                             );    
                         } else {
                             // remove the center line
@@ -217,44 +275,44 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
                                 if( ring == 0 && !pointyTip ) {
                                     barrycentricCoordinates.push(
                                         // face 1
-                                        0, 0, 1, 
-                                        0, 1, 0, 
-                                        1, 1, 0, 
+                                        0, 0, 1, nextCycleOffset, 
+                                        0, 1, 0, cycleOffset, 
+                                        1, 1, 0, nextRingCycleOffset, 
                                     );    
                                 } else {
                                     barrycentricCoordinates.push(
                                         // face 1
-                                        0, 1, 1, 
-                                        1, 1, 0, 
-                                        1, 1, 0, 
+                                        0, 1, 1, nextCycleOffset, 
+                                        1, 1, 0, cycleOffset,
+                                        1, 1, 0, nextRingCycleOffset
                                     );    
                                 }
                                 if( ring == rings - 2 && !pointyTip ) {
                                     barrycentricCoordinates.push(
                                         // face 2
-                                        1, 0, 0, 
-                                        0, 1, 1, 
-                                        0, 0, 1, 
+                                        1, 0, 0, nextCycleOffset,
+                                        0, 1, 1, nextRingCycleOffset,
+                                        0, 0, 1, nextRingNextCycleOffset
                                     );        
                                 } else {
                                     barrycentricCoordinates.push(
                                         // face 2
-                                        1, 1, 0, 
-                                        0, 1, 1, 
-                                        1, 1, 0
+                                        1, 1, 0, nextCycleOffset,
+                                        0, 1, 1, nextRingCycleOffset,
+                                        1, 1, 0, nextRingNextCycleOffset
                                     );        
                                 }
     
                             } else {
                                 barrycentricCoordinates.push(
                                     // face 1
-                                    0, 1, 1, 
-                                    1, 1, 0, 
-                                    1, 1, 0, 
+                                    0, 1, 1, nextCycleOffset,
+                                    1, 1, 0, cycleOffset,
+                                    1, 1, 0, nextRingCycleOffset,
                                     // face 2
-                                    1, 1, 0, 
-                                    0, 1, 1, 
-                                    1, 1, 0
+                                    1, 1, 0, nextCycleOffset,
+                                    0, 1, 1, nextRingCycleOffset,
+                                    1, 1, 0, nextRingNextCycleOffset
                                 );        
                             }
                         }
@@ -270,43 +328,53 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
                 if( ring == rings - 1 ) {
                     tips.push(-tipZ);
                 }
+                let tipSpikiness = pointyTip?maxSpikiness:0;
                 while( tips.length ) {
                     let tip = tips.splice(0, 1)[0];
                     indices.push( 
                         l++, l++, l++
                     );
+                    let cx = (rx + nextRx)/3;
+                    let cy = (ry + nextRy)/3;
+                    let cz = (ringZ * 2 + tip)/3;
+                    let r = Math.random();
+                    centerPoints.push(
+                        cx, cy, cz, r, 
+                        cx, cy, cz, r, 
+                        cx, cy, cz, r, 
+                    );
                     if( tip > 0 ) {
                         positions.push(
-                            rx, ry, ringZ, 
-                            nextRx, nextRy, ringZ, 
-                            0, 0, tip
+                            rx, ry, ringZ, spikiness,
+                            nextRx, nextRy, ringZ, nextSpikiness,
+                            0, 0, tip, tipSpikiness
                         );    
                     } else {
                         positions.push(
-                            nextRx, nextRy, ringZ, 
-                            rx, ry, ringZ, 
-                            0, 0, tip
+                            nextRx, nextRy, ringZ, nextSpikiness,
+                            rx, ry, ringZ, spikiness, 
+                            0, 0, tip, tipSpikiness
                         );    
                     }
                     if( pointyTip ) {
                         if( equalRingOffset ) {
                             barrycentricCoordinates.push(
-                                1, 0, 0, 
-                                0, 1, 0,  
-                                0, 0, 1, 
+                                1, 0, 0, tip > 0 ? cycleOffset: nextCycleOffset, 
+                                0, 1, 0, tip > 0 ? nextCycleOffset: cycleOffset, 
+                                0, 0, 1, ring * cycleBase, 
                             );    
                         } else {
                             barrycentricCoordinates.push(
-                                0, 1, 1, 
-                                1, 1, 0, 
-                                0, 1, 0, 
+                                0, 1, 1, tip > 0 ? cycleOffset: nextCycleOffset, 
+                                1, 1, 0, tip > 0 ? nextCycleOffset: cycleOffset, 
+                                0, 1, 0, ring * cycleBase, 
                             );    
                         }    
                     } else {
                         barrycentricCoordinates.push(
-                            0, 1, 0, 
-                            0, 1, 0, 
-                            1, 0, 1, 
+                            0, 1, 0, tip > 0 ? cycleOffset: nextCycleOffset, 
+                            0, 1, 0, tip > 0 ? nextCycleOffset: cycleOffset, 
+                            1, 0, 1, 0, 
                         );    
                     }
 
@@ -315,16 +383,14 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
             ringOffset=nextRingOffset;
         }
         
-        if( barrycentricCoordinates.length != positions.length ) {
-            throw "somehow screwed up";
-        }
-
         let barrycentricCoordinatesBuffer = webglCreateArrayBuffer(gl, barrycentricCoordinates);
         let positionBuffer = webglCreateArrayBuffer(gl, positions);
+        let centerPointsBuffer = webglCreateArrayBuffer(gl, centerPoints);
         let indicesBuffer = webglCreateElementArrayBuffer(gl, indices);
         
         return {
             isMonster: 1, 
+            id: nextId++,
             radius: radius, 
             lineColor: lineColor, 
             lineWidth: lineWidth,
@@ -334,20 +400,20 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
             z: z, 
             update: updater, 
             age: 0, 
-            rx: 0, 
-            ry: 0, 
+            rx: rx, 
+            ry: ry, 
             rz: 0, 
             vx: 0, 
             vy: 0, 
             vz: 0, 
             visible: 1, 
             barycentricCoordinatesBuffer: barrycentricCoordinatesBuffer, 
-            indices: indices, 
             indicesBuffer: indicesBuffer, 
             indicesCount: indices.length, 
             positionBuffer: positionBuffer, 
-            positions: positions, 
-            bounds: bounds
+            centerPointsBuffer: centerPointsBuffer,
+            bounds: bounds, 
+            cycleLength: cycleLength
         }
     }
 }

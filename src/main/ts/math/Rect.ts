@@ -27,7 +27,7 @@ function rectOverlap(r1: Rect<number[]>, r2: Rect<number[]>, dimension: number):
         let minMax = Math.min(max1, max2);
         let maxMin = Math.max(min1, min2);
         let d = minMax - maxMin;
-        ok = ok && d > 0;
+        ok = ok && d >= 0;
         if( ok ) {
             min.push(maxMin);
             max.push(minMax);

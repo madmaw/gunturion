@@ -4,11 +4,13 @@ interface ChunkGenerator {
 
 function flatChunkGeneratorFactory(gl: WebGLRenderingContext, chunkWidth: number, chunkHeight: number): ChunkGenerator {
 
+    let surfaceId = -1;
+
     let floorPositions = [
-        0, 0, 0, 
-        chunkWidth, 0, 0, 
-        chunkWidth, chunkHeight, 0,
-        0, chunkHeight, 0
+        0, 0, 0, 0,  
+        chunkWidth, 0, 0, 0, 
+        chunkWidth, chunkHeight, 0, 0, 
+        0, chunkHeight, 0, 0
     ];
     let floorPositionBuffer = webglCreateArrayBuffer(gl, floorPositions);
     let floorIndices = [
@@ -20,16 +22,20 @@ function flatChunkGeneratorFactory(gl: WebGLRenderingContext, chunkWidth: number
     let floorIndicesBuffer = webglCreateElementArrayBuffer(gl, floorIndices);
 
 
-    return function(x: number, y: number): Entity[] {
+    return function(tileY: number, tileX: number): Entity[] {
 
+        let x = tileX * (chunkWidth+1);
+        let y = tileY * (chunkHeight + 1);
+        let z = 0;
         let floor: Surface = {
             isMonster: 0,
+            id: surfaceId--,
             normal: [0, 0, 1],
             gridNormal: [0, 0, 1], 
             points: [[0, 0], [chunkWidth, 0], [chunkWidth, chunkHeight], [0, chunkHeight]],
-            x: x * chunkWidth, 
-            y: y * chunkHeight, 
-            z: 0, 
+            x: x, 
+            y: y, 
+            z: z, 
             lineColor: [.7, 0, .7], 
             lineWidth: 0.02,
             //fillColor: [Math.random(), Math.random(), Math.random()], 
@@ -37,6 +43,10 @@ function flatChunkGeneratorFactory(gl: WebGLRenderingContext, chunkWidth: number
             positionBuffer: floorPositionBuffer, 
             indicesBuffer: floorIndicesBuffer,
             indicesCount: floorIndices.length,
+            worldToPoints: matrix4Translate(-x, -y, -z), 
+            pointsToWorld: matrix4Translate(x, y, z),
+            worldToPointsRotation: matrix4Identity(), 
+            pointsToWorldRotation: matrix4Identity(),
             bounds: function(this: Surface): Rect3 {
                 return {
                     min: [this.x, this.y, this.z], 

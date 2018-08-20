@@ -28,3 +28,29 @@ function vector3Length(v: Vector3): number {
     return Math.sqrt(vector3DotProduct(v, v));
 }
 
+function vector3Mix(v1: Vector3, v2: Vector3, amt: number) {
+    let result: number[] = [];
+    for( let i=0; i<3; i++ ) {        
+        result.push(v1[i] * amt + v2[i] * (1 - amt))
+    }
+    return result;
+}
+
+function vector2PolyContains(poly: Vector2[], point: Vector2): boolean {
+    // from https://stackoverflow.com/questions/22521982/check-if-point-inside-a-polygon
+    let x = point[0], y = point[1];
+
+    let inside: boolean;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        let xi = poly[i][0], yi = poly[i][1];
+        let xj = poly[j][0], yj = poly[j][1];
+
+        let intersect = ((yi > y) != (yj > y))
+            && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) {
+            inside = !inside;
+        }
+    }
+
+    return inside;
+}

@@ -22,7 +22,9 @@ window.onload = function() {
         chunkDimension, 
         chunkDimension, 
         chunkGenerator, 
-        monsterGenerator
+        monsterGenerator, 
+        400, 
+        [.2, 0, .2]
     );
 
     let showHome = initShowHome(showPlay);  

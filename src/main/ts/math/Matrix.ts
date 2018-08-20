@@ -65,7 +65,9 @@ function matrix4Multiply(a: Matrix4, b: Matrix4, out?: Matrix4): Matrix4 {
 function matrix4MultiplyStack(matrices: Matrix4[]): Matrix4 {
     let current = matrix4Identity();
     for( let matrix of matrices ) {
-        current = matrix4Multiply(current, matrix);
+        if( matrix ) {
+            current = matrix4Multiply(current, matrix);
+        }
     }
     return current;
 }
