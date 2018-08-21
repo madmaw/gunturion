@@ -13,6 +13,17 @@ function flatChunkGeneratorFactory(gl: WebGLRenderingContext, chunkWidth: number
         0, chunkHeight, 0, 0
     ];
     let floorPositionBuffer = webglCreateArrayBuffer(gl, floorPositions);
+    
+    let lineScale = 4;
+    let aspectRatio = chunkWidth/chunkHeight;
+    let gridCoordinates = [
+        0, 0, aspectRatio, 0,  
+        chunkWidth/lineScale, 0, aspectRatio, 0, 
+        chunkWidth/lineScale, chunkHeight/lineScale, aspectRatio, 0, 
+        0, chunkHeight/lineScale, aspectRatio, 0
+    ];
+    let gridCoordinateBuffer = webglCreateArrayBuffer(gl, gridCoordinates);
+
     let floorIndices = [
         // triangle 1
         0, 1, 2,
@@ -21,11 +32,10 @@ function flatChunkGeneratorFactory(gl: WebGLRenderingContext, chunkWidth: number
     ];
     let floorIndicesBuffer = webglCreateElementArrayBuffer(gl, floorIndices);
 
-
     return function(tileY: number, tileX: number): Entity[] {
 
         let x = tileX * (chunkWidth+1);
-        let y = tileY * (chunkHeight + 1);
+        let y = tileY * (chunkHeight);
         let z = 0;
         let floor: Surface = {
             isMonster: 0,
@@ -37,10 +47,11 @@ function flatChunkGeneratorFactory(gl: WebGLRenderingContext, chunkWidth: number
             y: y, 
             z: z, 
             lineColor: [.7, 0, .7], 
-            lineWidth: 0.02,
+            lineWidth: 0.02/lineScale,
             //fillColor: [Math.random(), Math.random(), Math.random()], 
             fillColor: [0.64, 0.4, 0.6], 
             positionBuffer: floorPositionBuffer, 
+            gridCoordinateBuffer: gridCoordinateBuffer,
             indicesBuffer: floorIndicesBuffer,
             indicesCount: floorIndices.length,
             worldToPoints: matrix4Translate(-x, -y, -z), 

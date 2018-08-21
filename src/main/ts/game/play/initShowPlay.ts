@@ -2,31 +2,27 @@ let vertexShaderSource = `
 precision lowp float;
 attribute vec4 aVertexPosition;
 attribute vec4 aOffsetPoint;
-attribute vec4 aBarrycentricCoordinate;
+attribute vec4 aGridCoordinate;
 uniform mat4 uModelMatrix;
 uniform mat4 uViewMatrix;
 uniform mat4 uPreviousViewMatrix;
 uniform mat4 uProjectionMatrix;
-uniform bool uUseBarrycentricLines;
+uniform lowp int uGridMode;
 uniform float uCycleRadians;
 uniform float uOffsetMultiplier;
-varying vec3 vBarrycentricCoordinate;
 varying vec3 vRelativePosition;
-varying vec2 vGridCoordinate;
+varying vec3 vGridCoordinate;
 varying vec4 vScreenCoordinate;
 void main() {
-    vec3 adjustedVertexPosition;
-    if( uUseBarrycentricLines ) {
-        adjustedVertexPosition = aVertexPosition.xyz + aVertexPosition.w * aVertexPosition.xyz * sin(uCycleRadians + aBarrycentricCoordinate.w) + uOffsetMultiplier * aOffsetPoint.w * aOffsetPoint.xyz;
-        vBarrycentricCoordinate = aBarrycentricCoordinate.xyz;
-    } else {
-        adjustedVertexPosition = aVertexPosition.xyz;
+    vec3 adjustedVertexPosition = aVertexPosition.xyz;
+    if( uGridMode > 0 ) {
+        adjustedVertexPosition += aVertexPosition.w * aVertexPosition.xyz * sin(uCycleRadians + aGridCoordinate.w) + uOffsetMultiplier * aOffsetPoint.w * aOffsetPoint.xyz;
     }
     
     vec4 vertexPosition = uModelMatrix * vec4(adjustedVertexPosition, 1.);
     vec4 relativeVertexPosition = uViewMatrix * vertexPosition;
     vec4 screenPosition = uProjectionMatrix * relativeVertexPosition;
-    vGridCoordinate = vertexPosition.xy;
+    vGridCoordinate = aGridCoordinate.xyz;
     vRelativePosition = relativeVertexPosition.xyz;    
     vScreenCoordinate = uProjectionMatrix * uPreviousViewMatrix * vertexPosition;
     gl_Position = screenPosition;
@@ -43,10 +39,9 @@ uniform vec2 uCameraLight;
 uniform float uAmbientLight;
 uniform sampler2D uPrevious;
 uniform vec2 uPreviousDimension;
-uniform bool uUseBarrycentricLines;
-varying vec3 vBarrycentricCoordinate;
+uniform lowp int uGridMode;
 varying vec3 vRelativePosition;
-varying vec2 vGridCoordinate;
+varying vec3 vGridCoordinate;
 varying vec4 vScreenCoordinate;
 
 vec4 getSampleColor(in vec4 currentColor, in vec2 screenCoordinate, inout float count) {
@@ -68,9 +63,9 @@ void main() {
     }
     float lighting = min(1., max(0., (uCameraLight.x-distance) / uCameraLight.x)) * uCameraLight.y + uAmbientLight;
     float tileness = 1.;
-    if( uUseBarrycentricLines ) {
-        vec3 d = fwidth(vBarrycentricCoordinate);
-        vec3 a3 = smoothstep(vec3(0.0), d*max(1., uLineWidth * (1. - distance/uVisibleDistance)), vBarrycentricCoordinate);
+    if( uGridMode > 0 ) {
+        vec3 d = fwidth(vGridCoordinate);
+        vec3 a3 = smoothstep(vec3(0.0), d*max(1., uLineWidth * (1. - distance/uVisibleDistance)), vGridCoordinate);
         tileness = min(min(a3.x, a3.y), a3.z);
     } else {
         float mn = min(vGridCoordinate.x - floor(vGridCoordinate.x), vGridCoordinate.y - floor(vGridCoordinate.y));
@@ -134,7 +129,6 @@ function initShowPlay(
     let projectionMatrix: Matrix4;
     let canvasWidth: number;
     let canvasHeight: number;
-
 
     // NOTE: regenerate should be a boolean really, but onresize passes some truthy value
     let resize = function(regenerate?: any) {
@@ -209,12 +203,10 @@ function initShowPlay(
         throw 'program link error';
     }
     gl.useProgram(shaderProgram);
-    
-
 
     // get uniforms and attributes
     let aVertexPosition = gl.getAttribLocation(shaderProgram, 'aVertexPosition');
-    let aBarrycentricCoordinate = gl.getAttribLocation(shaderProgram, 'aBarrycentricCoordinate');
+    let aGridCoordinate = gl.getAttribLocation(shaderProgram, 'aGridCoordinate');
     let aOffsetPoint = gl.getAttribLocation(shaderProgram, 'aOffsetPoint');
 
     let uProjectionMatrix = gl.getUniformLocation(shaderProgram, 'uProjectionMatrix');
@@ -229,13 +221,12 @@ function initShowPlay(
     let uAmbientLight = gl.getUniformLocation(shaderProgram, 'uAmbientLight');
     let uPrevious = gl.getUniformLocation(shaderProgram, 'uPrevious');
     let uPreviousDimension = gl.getUniformLocation(shaderProgram, 'uPreviousDimension');
-    let uUseBarrycentricLines = gl.getUniformLocation(shaderProgram, 'uUseBarrycentricLines');
+    let uGridMode = gl.getUniformLocation(shaderProgram, 'uGridMode');
     let uCycleRadians = gl.getUniformLocation(shaderProgram, 'uCycleRadians');
     let uOffsetMultiplier = gl.getUniformLocation(shaderProgram, 'uOffsetMultiplier');
 
     gl.uniform1f(uVisibleDistance, visibleDistance);
     
-
     return function() {
         let animationFrameHandle: number;
         let destroy = function() {
@@ -291,8 +282,7 @@ function initShowPlay(
         }
         canvas.onmouseup = function(e: MouseEvent) {
             shooting = 0;
-        }
-     
+        }     
         canvas.onmousemove = function(e: MouseEvent) {
             if( document.pointerLockElement == canvas ) {
                 
@@ -306,7 +296,6 @@ function initShowPlay(
                 keyStates[keyCode] = world.age;
             }
         }
-
         window.onkeyup = function(e: KeyboardEvent) {
             let keyCode = e.keyCode;
             keyStates[keyCode] = 0;
@@ -351,7 +340,7 @@ function initShowPlay(
                     result = COLLISION_RESPONSE_SLIDE;
                 }
                 return result;
-            }    
+            }
         }
         player.update = function(this: Monster, world: World, amt: number) {
             let left = keyStates[37] || keyStates[65];
@@ -460,20 +449,18 @@ function initShowPlay(
                 }
     
                 webglBindAttributeBuffer(gl, entity.positionBuffer, aVertexPosition, 4);
+                webglBindAttributeBuffer(gl, entity.gridCoordinateBuffer, aGridCoordinate, 4);
        
                 gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, entity.indicesBuffer);
-    
-    
     
                 let translationMatrix = matrix4Translate(entity.x, entity.y, entity.z);
                 let lineColor = entity.lineColor;
                 let fillColor = entity.fillColor;
                 gl.uniform1f(uLineWidth, entity.lineWidth);
-                gl.uniform1i(uUseBarrycentricLines, entity.isMonster);
+                gl.uniform1i(uGridMode, entity.isMonster);
     
                 if( entity.isMonster ) {
     
-                    webglBindAttributeBuffer(gl, entity.barycentricCoordinatesBuffer, aBarrycentricCoordinate, 4);
                     webglBindAttributeBuffer(gl, entity.centerPointsBuffer, aOffsetPoint, 4); 
                     let rotationMatrixX = matrix4Rotate(0, 1, 0, -entity.rx);
                     let rotationMatrixY = matrix4Rotate(1, 0, 0, -entity.ry);
@@ -546,12 +533,21 @@ function initShowPlay(
             );
 
             // adjust for walk animation
-            let walkTranslationMatrix = matrix4Translate(Math.sin(walkDistance)/8, 0, Math.abs(Math.cos(walkDistance)/8));
+            let walkTranslationMatrix: Matrix4;
+            if( FLAG_SHAKY_CAMERA ) {
+                let screenShake = Math.max(0, (lastShot + 99 - world.age)/999);
+                walkTranslationMatrix = matrix4Translate(
+                    Math.sin(walkDistance)/8 + (Math.random() - .5)*screenShake, 
+                    screenShake, 
+                    Math.abs(Math.cos(walkDistance)/8) + (Math.random() - .5)*screenShake
+                );
+            }
             let rotationMatrixX = matrix4Rotate(1, 0, 0, world.cameraRotationX);
-            let rotationMatrixY = matrix4Rotate(0, 1, 0, world.cameraRotationY);
+            // camera is never rotated on the y axis
+            //let rotationMatrixY = matrix4Rotate(0, 1, 0, world.cameraRotationY);
             let rotationMatrixZ = matrix4Rotate(0, 0, 1, world.cameraRotationZ);
             let translationMatrix = matrix4Translate(-world.cameraX, -world.cameraY, -world.cameraZ);
-            let viewMatrix = matrix4MultiplyStack([rotationMatrixX, rotationMatrixY, walkTranslationMatrix, rotationMatrixZ, translationMatrix]);
+            let viewMatrix = matrix4MultiplyStack([rotationMatrixX, /*rotationMatrixY,*/ walkTranslationMatrix, rotationMatrixZ, translationMatrix]);
 
             render(projectionMatrix, viewMatrix, previousViewMatrix);
 

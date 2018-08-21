@@ -13,6 +13,7 @@ interface EntityBase {
     fillColor: Vector3;
     lineWidth: number;
     positionBuffer: WebGLBuffer;
+    gridCoordinateBuffer: WebGLBuffer;
     indicesBuffer: WebGLBuffer;
     indicesCount: number;
 }
@@ -29,7 +30,6 @@ interface Monster extends EntityBase {
     age: number;
     specialMatrix?: Matrix4;
     deathAge?: number;
-    barycentricCoordinatesBuffer: WebGLBuffer;
     centerPointsBuffer: WebGLBuffer;
     update(world: World, diff: number): any;
     collisionResponse(entity: Entity): number;
@@ -423,7 +423,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
             vy: 0, 
             vz: 0, 
             visible: 1, 
-            barycentricCoordinatesBuffer: barrycentricCoordinatesBuffer, 
+            gridCoordinateBuffer: barrycentricCoordinatesBuffer, 
             indicesBuffer: indicesBuffer, 
             indicesCount: indices.length, 
             positionBuffer: positionBuffer, 

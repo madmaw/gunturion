@@ -10,3 +10,4 @@ const FLAG_CLEANUP_EVENT_HANDLERS_ON_DESTROY = false;
 const FLAG_MUZZLE_FLASH = true;
 const FLAG_DEATH_ANIMATION = true;
 const FLAG_ALLOW_JUMPING = true;
+const FLAG_SHAKY_CAMERA = true;
