@@ -275,7 +275,10 @@ class World {
             arrayRemove(this.activeMonsters, entity);
         }
         arrayRemove(this.allEntities, entity);
-        this.removeEntityPosition(entity);        
+        this.removeEntityPosition(entity);
+        if( FLAG_CLEAN_UP_ENTITY ) {
+            entity.cleanup();
+        } 
     }
 
     public removeEntityPosition(entity: Entity) {

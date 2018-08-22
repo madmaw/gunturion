@@ -9,6 +9,7 @@ interface EntityBase {
     y: number;
     z: number;
     bounds(): Rect3;
+    cleanup(): void;
     lineColor: Vector3;
     fillColor: Vector3;
     lineWidth: number;
@@ -413,6 +414,14 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
                     result =  COLLISION_RESPONSE_SLIDE;
                 }
                 return result;
+            },
+            cleanup: function(this: Monster) {
+                if( FLAG_CLEAN_UP_ENTITY ) {
+                    gl.deleteBuffer(indicesBuffer);
+                    gl.deleteBuffer(positionBuffer);
+                    gl.deleteBuffer(centerPointsBuffer);
+                    gl.deleteBuffer(barrycentricCoordinatesBuffer);
+                }
             },
             side: 0,
             age: 0, 

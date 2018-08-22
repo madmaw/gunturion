@@ -15,12 +15,14 @@ function flatChunkGeneratorFactory(gl: WebGLRenderingContext, chunkWidth: number
     let floorPositionBuffer = webglCreateArrayBuffer(gl, floorPositions);
     
     let lineScale = 4;
-    let aspectRatio = chunkWidth/chunkHeight;
+    let x = chunkWidth/lineScale;
+    let y = chunkHeight*2/lineScale;
+    let aspectRatio = x/y;
     let gridCoordinates = [
         0, 0, aspectRatio, 0,  
-        chunkWidth/lineScale, 0, aspectRatio, 0, 
-        chunkWidth/lineScale, chunkHeight/lineScale, aspectRatio, 0, 
-        0, chunkHeight/lineScale, aspectRatio, 0
+        x, 0, aspectRatio, 0, 
+        x, y, aspectRatio, 0, 
+        0, y, aspectRatio, 0
     ];
     let gridCoordinateBuffer = webglCreateArrayBuffer(gl, gridCoordinates);
 
@@ -58,6 +60,9 @@ function flatChunkGeneratorFactory(gl: WebGLRenderingContext, chunkWidth: number
             pointsToWorld: matrix4Translate(x, y, z),
             worldToPointsRotation: matrix4Identity(), 
             pointsToWorldRotation: matrix4Identity(),
+            cleanup: function() {
+                // do nothing
+            },
             bounds: function(this: Surface): Rect3 {
                 return {
                     min: [this.x, this.y, this.z], 

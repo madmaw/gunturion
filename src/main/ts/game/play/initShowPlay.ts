@@ -1,51 +1,76 @@
+const A_VERTEX_POSITION = 'aVertexPosition_';
+const A_OFFSET_POINT = 'aOffsetPoint_';
+const A_GRID_COORDINATE = 'aGridCoordinate_';
+
+const U_MODEL_MATRIX = 'uModelMatrix_';
+const U_VIEW_MATRIX = 'uViewMatrix_';
+const U_PROJECTION_MATRIX = 'uProjectionMatrix_';
+const U_PREVIOUS_VIEW_MATRIX = 'uPreviousViewMatrix_';
+const U_GRID_MODE = 'uGridMode_';
+const U_CYCLE_RADIANS = 'uCycleRadians_';
+const U_OFFSET_MULTIPLIER = 'uOffsetMultiplier_';
+const V_RELATIVE_POSITION = 'vRelativePosition_';
+const V_GRID_COORDINATE = 'vGridCoordinate_';
+const V_SCREEN_COORDINATE = 'vScreenCoordinate_';
+
 let vertexShaderSource = `
 precision lowp float;
-attribute vec4 aVertexPosition;
-attribute vec4 aOffsetPoint;
-attribute vec4 aGridCoordinate;
-uniform mat4 uModelMatrix;
-uniform mat4 uViewMatrix;
-uniform mat4 uPreviousViewMatrix;
-uniform mat4 uProjectionMatrix;
-uniform lowp int uGridMode;
-uniform float uCycleRadians;
-uniform float uOffsetMultiplier;
-varying vec3 vRelativePosition;
-varying vec3 vGridCoordinate;
-varying vec4 vScreenCoordinate;
+attribute vec4 ${A_VERTEX_POSITION};
+attribute vec4 ${A_OFFSET_POINT};
+attribute vec4 ${A_GRID_COORDINATE};
+uniform mat4 ${U_MODEL_MATRIX};
+uniform mat4 ${U_VIEW_MATRIX};
+uniform mat4 ${U_PREVIOUS_VIEW_MATRIX};
+uniform mat4 ${U_PROJECTION_MATRIX};
+uniform lowp int ${U_GRID_MODE};
+uniform float ${U_CYCLE_RADIANS};
+uniform float ${U_OFFSET_MULTIPLIER};
+varying vec3 ${V_RELATIVE_POSITION};
+varying vec3 ${V_GRID_COORDINATE};
+varying vec4 ${V_SCREEN_COORDINATE};
 void main() {
-    vec3 adjustedVertexPosition = aVertexPosition.xyz;
-    if( uGridMode > 0 ) {
-        adjustedVertexPosition += aVertexPosition.w * aVertexPosition.xyz * sin(uCycleRadians + aGridCoordinate.w) + uOffsetMultiplier * aOffsetPoint.w * aOffsetPoint.xyz;
+    vec3 adjustedVertexPosition = ${A_VERTEX_POSITION}.xyz;
+    if( ${U_GRID_MODE} > 0 ) {
+        adjustedVertexPosition += ${A_VERTEX_POSITION}.w * ${A_VERTEX_POSITION}.xyz * sin(${U_CYCLE_RADIANS} + ${A_GRID_COORDINATE}.w) + ${U_OFFSET_MULTIPLIER} * ${A_OFFSET_POINT}.w * ${A_OFFSET_POINT}.xyz;
     }
     
-    vec4 vertexPosition = uModelMatrix * vec4(adjustedVertexPosition, 1.);
-    vec4 relativeVertexPosition = uViewMatrix * vertexPosition;
-    vec4 screenPosition = uProjectionMatrix * relativeVertexPosition;
-    vGridCoordinate = aGridCoordinate.xyz;
-    vRelativePosition = relativeVertexPosition.xyz;    
-    vScreenCoordinate = uProjectionMatrix * uPreviousViewMatrix * vertexPosition;
+    vec4 vertexPosition = ${U_MODEL_MATRIX} * vec4(adjustedVertexPosition, 1.);
+    vec4 relativeVertexPosition = ${U_VIEW_MATRIX} * vertexPosition;
+    vec4 screenPosition = ${U_PROJECTION_MATRIX} * relativeVertexPosition;
+    ${V_GRID_COORDINATE} = ${A_GRID_COORDINATE}.xyz;
+    ${V_RELATIVE_POSITION} = relativeVertexPosition.xyz;    
+    ${V_SCREEN_COORDINATE} = ${U_PROJECTION_MATRIX} * ${U_PREVIOUS_VIEW_MATRIX} * vertexPosition;
     gl_Position = screenPosition;
 }
 `;
+
+const U_FILL_COLOR = 'uFillColor_';
+const U_LINE_COLOR = 'uLineColor_';
+const U_LINE_WIDTH = 'uLineWidth_';
+const U_VISIBLE_DISTANCE = 'uVisibleDistance_';
+const U_CAMERA_LIGHT = 'uCameraLight_';
+const U_AMBIENT_LIGHT = 'uAmbientLight_';
+const U_PREVIOUS = 'uPrevious_';
+const U_PREVIOUS_DIMENSION = 'uPreviousDimension_';
+
 let fragmentShaderSource = `
 #extension GL_OES_standard_derivatives : enable
 precision lowp float;
-uniform vec3 uFillColor;
-uniform vec3 uLineColor;
-uniform float uLineWidth;
-uniform float uVisibleDistance;
-uniform vec2 uCameraLight;
-uniform float uAmbientLight;
-uniform sampler2D uPrevious;
-uniform vec2 uPreviousDimension;
-uniform lowp int uGridMode;
-varying vec3 vRelativePosition;
-varying vec3 vGridCoordinate;
-varying vec4 vScreenCoordinate;
+uniform vec3 ${U_FILL_COLOR};
+uniform vec3 ${U_LINE_COLOR};
+uniform float ${U_LINE_WIDTH};
+uniform float ${U_VISIBLE_DISTANCE};
+uniform vec2 ${U_CAMERA_LIGHT};
+uniform float ${U_AMBIENT_LIGHT};
+uniform sampler2D ${U_PREVIOUS};
+uniform vec2 ${U_PREVIOUS_DIMENSION};
+uniform lowp int ${U_GRID_MODE};
+varying vec3 ${V_RELATIVE_POSITION};
+varying vec3 ${V_GRID_COORDINATE};
+varying vec4 ${V_SCREEN_COORDINATE};
 
 vec4 getSampleColor(in vec4 currentColor, in vec2 screenCoordinate, inout float count) {
-    vec4 previousColor = texture2D(uPrevious, screenCoordinate);
+    vec4 previousColor = texture2D(${U_PREVIOUS}, screenCoordinate);
     float amt = (previousColor.a  - currentColor.a+ 1.) /2.;
     count += amt * (.3 + currentColor.a/2.3);
     return mix(currentColor, previousColor, amt);    
@@ -54,40 +79,42 @@ vec4 getSampleColor(in vec4 currentColor, in vec2 screenCoordinate, inout float 
 void main() {
     // TODO can shorten this for sure
 
-    float distanceSquared = vRelativePosition.x*vRelativePosition.x+vRelativePosition.y*vRelativePosition.y+vRelativePosition.z*vRelativePosition.z;
+    float distanceSquared = ${V_RELATIVE_POSITION}.x*${V_RELATIVE_POSITION}.x+${V_RELATIVE_POSITION}.y*${V_RELATIVE_POSITION}.y+${V_RELATIVE_POSITION}.z*${V_RELATIVE_POSITION}.z;
     float distance = sqrt(distanceSquared);
-    float visibleDistanceSquared = uVisibleDistance * uVisibleDistance;
+    float visibleDistanceSquared = ${U_VISIBLE_DISTANCE} * ${U_VISIBLE_DISTANCE};
+    // TODO clamp
     float fogginess = min(1., max(0., (visibleDistanceSquared-distanceSquared) / visibleDistanceSquared));
-    if( distance > uVisibleDistance ) {
+    if( distance > ${U_VISIBLE_DISTANCE} ) {
         fogginess = 0.;
     }
-    float lighting = min(1., max(0., (uCameraLight.x-distance) / uCameraLight.x)) * uCameraLight.y + uAmbientLight;
+    // TODO clamp
+    float lighting = min(1., max(0., (${U_CAMERA_LIGHT}.x-distance) / ${U_CAMERA_LIGHT}.x)) * ${U_CAMERA_LIGHT}.y + ${U_AMBIENT_LIGHT};
     float tileness = 1.;
-    if( uGridMode > 0 ) {
-        vec3 d = fwidth(vGridCoordinate);
-        vec3 a3 = smoothstep(vec3(0.0), d*max(1., uLineWidth * (1. - distance/uVisibleDistance)), vGridCoordinate);
+    if( ${U_GRID_MODE} > 0 ) {
+        vec3 d = fwidth(${V_GRID_COORDINATE});
+        vec3 a3 = smoothstep(vec3(0.0), d*max(1., ${U_LINE_WIDTH} * (1. - distance/${U_VISIBLE_DISTANCE})), ${V_GRID_COORDINATE});
         tileness = min(min(a3.x, a3.y), a3.z);
     } else {
-        float mn = min(vGridCoordinate.x - floor(vGridCoordinate.x), vGridCoordinate.y - floor(vGridCoordinate.y));
-        float mx = max(vGridCoordinate.x - floor(vGridCoordinate.x), vGridCoordinate.y - floor(vGridCoordinate.y));
-        if( mn < uLineWidth || mx > (1.0 - uLineWidth) ) {
+        float mn = min(${V_GRID_COORDINATE}.x - floor(${V_GRID_COORDINATE}.x), (${V_GRID_COORDINATE}.y - floor(${V_GRID_COORDINATE}.y))*${V_GRID_COORDINATE}.z);
+        float mx = max(${V_GRID_COORDINATE}.x - floor(${V_GRID_COORDINATE}.x), (${V_GRID_COORDINATE}.y - floor(${V_GRID_COORDINATE}.y))*${V_GRID_COORDINATE}.z);
+        if( mn < ${U_LINE_WIDTH} || mx > (1.0 - ${U_LINE_WIDTH}) ) {
             float m = min(mn, 1.0 - mx);
-            tileness = m / uLineWidth * (1. - max(0., distance/uVisibleDistance))*(1. - uLineWidth * 1.1) + uLineWidth * 1.1;
+            tileness = m / ${U_LINE_WIDTH} * (1. - max(0., distance/${U_VISIBLE_DISTANCE}))*(1. - ${U_LINE_WIDTH} * 1.1) + ${U_LINE_WIDTH} * 1.1;
             tileness *= tileness * tileness;
         }    
     }
-    vec4 current = vec4(mix(uLineColor, mix(vec3(0.), uFillColor, lighting), tileness), fogginess);
+    vec4 current = vec4(mix(${U_LINE_COLOR}, mix(vec3(0.), ${U_FILL_COLOR}, lighting), tileness), fogginess);
     // blur
-    vec2 textureCoordinate = (vScreenCoordinate.xy/vScreenCoordinate.w)/2. + .5;
+    vec2 textureCoordinate = (${V_SCREEN_COORDINATE}.xy/${V_SCREEN_COORDINATE}.w)/2. + .5;
     float count = 0.;
     vec4 previous = getSampleColor(current, textureCoordinate, count);
     for( int i=1; i<7; ++i ) {
         float f = float(i*i+3)/2.;
         //float f = float(i);
-        previous += getSampleColor(current, textureCoordinate + vec2(uPreviousDimension.x, 0.) * f, count);
-        previous += getSampleColor(current, textureCoordinate - vec2(uPreviousDimension.x, 0.) * f, count);
-        previous += getSampleColor(current, textureCoordinate + vec2(0., uPreviousDimension.y) * f, count);
-        previous += getSampleColor(current, textureCoordinate - vec2(0., uPreviousDimension.y) * f, count);
+        previous += getSampleColor(current, textureCoordinate + vec2(${U_PREVIOUS_DIMENSION}.x, 0.) * f, count);
+        previous += getSampleColor(current, textureCoordinate - vec2(${U_PREVIOUS_DIMENSION}.x, 0.) * f, count);
+        previous += getSampleColor(current, textureCoordinate + vec2(0., ${U_PREVIOUS_DIMENSION}.y) * f, count);
+        previous += getSampleColor(current, textureCoordinate - vec2(0., ${U_PREVIOUS_DIMENSION}.y) * f, count);
     }
     if( count > 0. ) {
         previous /= count;
@@ -205,25 +232,25 @@ function initShowPlay(
     gl.useProgram(shaderProgram);
 
     // get uniforms and attributes
-    let aVertexPosition = gl.getAttribLocation(shaderProgram, 'aVertexPosition');
-    let aGridCoordinate = gl.getAttribLocation(shaderProgram, 'aGridCoordinate');
-    let aOffsetPoint = gl.getAttribLocation(shaderProgram, 'aOffsetPoint');
+    let aVertexPosition = gl.getAttribLocation(shaderProgram, A_VERTEX_POSITION);
+    let aGridCoordinate = gl.getAttribLocation(shaderProgram, A_GRID_COORDINATE);
+    let aOffsetPoint = gl.getAttribLocation(shaderProgram, A_OFFSET_POINT);
 
-    let uProjectionMatrix = gl.getUniformLocation(shaderProgram, 'uProjectionMatrix');
-    let uModelMatrix = gl.getUniformLocation(shaderProgram, 'uModelMatrix');
-    let uViewMatrix = gl.getUniformLocation(shaderProgram, 'uViewMatrix');
-    let uPreviousViewMatrix = gl.getUniformLocation(shaderProgram, 'uPreviousViewMatrix');
-    let uFillColor = gl.getUniformLocation(shaderProgram, 'uFillColor');
-    let uLineColor = gl.getUniformLocation(shaderProgram, 'uLineColor');
-    let uLineWidth = gl.getUniformLocation(shaderProgram, 'uLineWidth');
-    let uVisibleDistance = gl.getUniformLocation(shaderProgram, 'uVisibleDistance');
-    let uCameraLight = gl.getUniformLocation(shaderProgram, 'uCameraLight');
-    let uAmbientLight = gl.getUniformLocation(shaderProgram, 'uAmbientLight');
-    let uPrevious = gl.getUniformLocation(shaderProgram, 'uPrevious');
-    let uPreviousDimension = gl.getUniformLocation(shaderProgram, 'uPreviousDimension');
-    let uGridMode = gl.getUniformLocation(shaderProgram, 'uGridMode');
-    let uCycleRadians = gl.getUniformLocation(shaderProgram, 'uCycleRadians');
-    let uOffsetMultiplier = gl.getUniformLocation(shaderProgram, 'uOffsetMultiplier');
+    let uProjectionMatrix = gl.getUniformLocation(shaderProgram, U_PROJECTION_MATRIX);
+    let uModelMatrix = gl.getUniformLocation(shaderProgram, U_MODEL_MATRIX);
+    let uViewMatrix = gl.getUniformLocation(shaderProgram, U_VIEW_MATRIX);
+    let uPreviousViewMatrix = gl.getUniformLocation(shaderProgram, U_PREVIOUS_VIEW_MATRIX);
+    let uFillColor = gl.getUniformLocation(shaderProgram, U_FILL_COLOR);
+    let uLineColor = gl.getUniformLocation(shaderProgram, U_LINE_COLOR);
+    let uLineWidth = gl.getUniformLocation(shaderProgram, U_LINE_WIDTH);
+    let uVisibleDistance = gl.getUniformLocation(shaderProgram, U_VISIBLE_DISTANCE);
+    let uCameraLight = gl.getUniformLocation(shaderProgram, U_CAMERA_LIGHT);
+    let uAmbientLight = gl.getUniformLocation(shaderProgram, U_AMBIENT_LIGHT);
+    let uPrevious = gl.getUniformLocation(shaderProgram, U_PREVIOUS);
+    let uPreviousDimension = gl.getUniformLocation(shaderProgram, U_PREVIOUS_DIMENSION);
+    let uGridMode = gl.getUniformLocation(shaderProgram, U_GRID_MODE);
+    let uCycleRadians = gl.getUniformLocation(shaderProgram, U_CYCLE_RADIANS);
+    let uOffsetMultiplier = gl.getUniformLocation(shaderProgram, U_OFFSET_MULTIPLIER);
 
     gl.uniform1f(uVisibleDistance, visibleDistance);
     
@@ -450,7 +477,7 @@ function initShowPlay(
     
                 webglBindAttributeBuffer(gl, entity.positionBuffer, aVertexPosition, 4);
                 webglBindAttributeBuffer(gl, entity.gridCoordinateBuffer, aGridCoordinate, 4);
-       
+                
                 gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, entity.indicesBuffer);
     
                 let translationMatrix = matrix4Translate(entity.x, entity.y, entity.z);
@@ -459,9 +486,9 @@ function initShowPlay(
                 gl.uniform1f(uLineWidth, entity.lineWidth);
                 gl.uniform1i(uGridMode, entity.isMonster);
     
+                let offsetPointsBuffer: WebGLBuffer;
                 if( entity.isMonster ) {
-    
-                    webglBindAttributeBuffer(gl, entity.centerPointsBuffer, aOffsetPoint, 4); 
+                    offsetPointsBuffer = entity.centerPointsBuffer;
                     let rotationMatrixX = matrix4Rotate(0, 1, 0, -entity.rx);
                     let rotationMatrixY = matrix4Rotate(1, 0, 0, -entity.ry);
                     let rotationMatrixZ = matrix4Rotate(0, 0, 1, -entity.rz);
@@ -494,9 +521,14 @@ function initShowPlay(
     
     
                 } else {
+                    // doesn't get used, but put something in to prevent errors from disposed buffers
+                    offsetPointsBuffer = entity.gridCoordinateBuffer;
+
                     let surface = entity as Surface;
                     gl.uniformMatrix4fv(uModelMatrix, false, translationMatrix);
                 }
+                webglBindAttributeBuffer(gl, offsetPointsBuffer, aOffsetPoint, 4); 
+
     
                 gl.uniform3fv(uFillColor, fillColor);
                 gl.uniform3fv(uLineColor, lineColor);
