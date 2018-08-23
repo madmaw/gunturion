@@ -1,7 +1,3 @@
-let COLLISION_RESPONSE_SLIDE = 0;
-let COLLISION_RESPONSE_DIE = 1;
-let COLLISION_RESPONSE_BOUNCE = 2;
-let COLLISION_RESPONSE_NONE = 0;
 
 interface EntityBase {
     id: number;
@@ -33,7 +29,8 @@ interface Monster extends EntityBase {
     deathAge?: number;
     centerPointsBuffer: WebGLBuffer;
     update(world: World, diff: number): any;
-    collisionResponse(entity: Entity): number;
+    onCollision(entity: Entity): any;
+    restitution: number;
     visible: number;
     cycleLength: number;
     side?: number;
@@ -405,15 +402,12 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
             x: x, 
             y: y, 
             z: z, 
+            restitution: 0.01,
             update: updater,
-            collisionResponse: function(entity: Entity) {
-                let result: number;
+            onCollision: function(this: Monster, entity: Entity) {
                 if( entity.isMonster && entity.side > this.side ) {
-                    result = COLLISION_RESPONSE_DIE;
-                } else {
-                    result =  COLLISION_RESPONSE_SLIDE;
+                    this.deathAge = this.age;
                 }
-                return result;
             },
             cleanup: function(this: Monster) {
                 if( FLAG_CLEAN_UP_ENTITY ) {

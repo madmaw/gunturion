@@ -82,13 +82,12 @@ void main() {
     float distanceSquared = ${V_RELATIVE_POSITION}.x*${V_RELATIVE_POSITION}.x+${V_RELATIVE_POSITION}.y*${V_RELATIVE_POSITION}.y+${V_RELATIVE_POSITION}.z*${V_RELATIVE_POSITION}.z;
     float distance = sqrt(distanceSquared);
     float visibleDistanceSquared = ${U_VISIBLE_DISTANCE} * ${U_VISIBLE_DISTANCE};
-    // TODO clamp
-    float fogginess = min(1., max(0., (visibleDistanceSquared-distanceSquared) / visibleDistanceSquared));
-    if( distance > ${U_VISIBLE_DISTANCE} ) {
-        fogginess = 0.;
+    float fogginess = 0.;
+    if( distance < ${U_VISIBLE_DISTANCE} ) {
+        fogginess = clamp((visibleDistanceSquared-distanceSquared) / visibleDistanceSquared, 0., 1.);
     }
-    // TODO clamp
-    float lighting = min(1., max(0., (${U_CAMERA_LIGHT}.x-distance) / ${U_CAMERA_LIGHT}.x)) * ${U_CAMERA_LIGHT}.y + ${U_AMBIENT_LIGHT};
+    
+    float lighting = clamp((${U_CAMERA_LIGHT}.x-distance) / ${U_CAMERA_LIGHT}.x, 0., 1.) * ${U_CAMERA_LIGHT}.y + ${U_AMBIENT_LIGHT};
     float tileness = 1.;
     if( ${U_GRID_MODE} > 0 ) {
         vec3 d = fwidth(${V_GRID_COORDINATE});
@@ -144,7 +143,7 @@ function initShowPlay(
     let canvas = document.getElementById('b') as HTMLCanvasElement;
     let context = canvas.getContext('2d');
 
-    let visibleDistance = Math.min(activeTilesWidth, activeTilesHeight)/2;
+    let visibleDistance = 99;//Math.min(activeTilesWidth, activeTilesHeight)/2;
     
     let textureData: Uint8Array;
     let textureImageData: ImageData;
@@ -276,7 +275,7 @@ function initShowPlay(
         window.onresize = resize;
 
         let world = new World(activeTilesWidth, activeTilesHeight, chunkWidth, chunkHeight, chunkGenerator, monsterGenerator, deathAnimationTime);
-        let entityCount = 40;
+        let entityCount = 0;
         for( let i=0; i<entityCount; i++ ) {
             let angle = Math.PI * 2 * i / entityCount;
             let r = Math.random() * visibleDistance*.9 + 3;
@@ -332,7 +331,12 @@ function initShowPlay(
         }
     
         // generate something gun-like
-        let player = monsterGenerator(25, 0, 0, 0, 1);
+        //let player = monsterGenerator(25, 0, 0, 2, 1);
+        let player = monsterGenerator(25, 16.360982887742765, 0.00021322149983513117, 1.0000392138221743, 1);
+        player.vx = 0.0002248813664260074;
+        player.vy = -0.003993673543372614;
+        player.vz = 0.0000019801980198019803;
+        
         let walkDistance = 0;
         // TODO can remove once we get our model under control
         player.ry = 0;
@@ -354,17 +358,16 @@ function initShowPlay(
         let shotInterval = 300;
         let lastFloor = 0;
         if( FLAG_ALLOW_JUMPING ) {
-            player.collisionResponse = function(this: Monster, other: Entity) {
+            player.onCollision = function(this: Monster, other: Entity) {
                 let result: number;
                 if( other.isMonster ) {
-                    result = COLLISION_RESPONSE_DIE;
+                    this.deathAge = this.age;
                 } else {
                     let surface = other as Surface;
                     // you can probably jump
                     if( surface.normal[2]>0) {
                         lastFloor = this.age;
                     }
-                    result = COLLISION_RESPONSE_SLIDE;
                 }
                 return result;
             }
@@ -415,8 +418,10 @@ function initShowPlay(
                 player.vz = baseVelocity;
                 lastFloor = 0;
             }
-            player.vx = vx;
-            player.vy = vy;
+            // player.vx = vx;
+            // player.vy = vy;
+            // player.vx = 0.000764026302672585;
+            // player.vy = 0.003926355028372302;
             
             if( shooting ) {
                 if( this.age > lastShot + shotInterval ) {
@@ -429,14 +434,17 @@ function initShowPlay(
                     }
                     // shoot
                     let bullet = monsterGenerator(818, this.x + this.radius*cosZSide/3 + this.radius*cosZ*3, this.y + this.radius*sinZSide/3 + this.radius*sinZ*3, this.z + sinX * this.radius*3, .2);
-                    let bulletVelocity = 0.05; 
+                    let bulletVelocity = 0.005; 
                     bullet.update = function(this: Monster) {
                         return this.age > 9999;
                     }
                     bullet.side = -this.side;
-                    bullet.collisionResponse = function() {
-                        return COLLISION_RESPONSE_DIE;
+                    bullet.onCollision = function(this: Monster, withEntity: Entity) {
+                        if( withEntity.isMonster ) {
+                            this.deathAge = this.age;
+                        }
                     }
+                    bullet.restitution = 1;
                     bullet.vx = cosX * cosZ * bulletVelocity;
                     bullet.vy = cosX * sinZ * bulletVelocity;
                     bullet.vz = sinX * bulletVelocity;
@@ -543,6 +551,7 @@ function initShowPlay(
             animationFrameHandle = requestAnimationFrame(update);
 
             let diff = Math.min(99, now - then);
+            diff = 20;
             then = now;
 
             world.update(diff);

@@ -38,7 +38,7 @@ function flatChunkGeneratorFactory(gl: WebGLRenderingContext, chunkWidth: number
 
         let x = tileX * (chunkWidth+1);
         let y = tileY * (chunkHeight);
-        let z = 0;
+        let z = tileX/2;
         let floor: Surface = {
             isMonster: 0,
             id: surfaceId--,
