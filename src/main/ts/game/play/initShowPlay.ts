@@ -275,13 +275,11 @@ function initShowPlay(
         window.onresize = resize;
 
         let world = new World(activeTilesWidth, activeTilesHeight, chunkWidth, chunkHeight, chunkGenerator, monsterGenerator, deathAnimationTime);
-        let entityCount = 0;
+        let entityCount = 40;
         for( let i=0; i<entityCount; i++ ) {
-            let angle = Math.PI * 2 * i / entityCount;
-            let r = Math.random() * visibleDistance*.9 + 3;
-            let x = Math.cos(angle) * r;
-            let y = Math.sin(angle) * r;
-            let z = Math.random() * 2 + 1;
+            let x = Math.random() * activeTilesWidth;
+            let y = Math.random() * activeTilesHeight;
+            let z = Math.random() * 2 + 3;
             let monster = monsterGenerator((Math.random() * 9999999) | 0, x, y, z, 1);
             world.addEntity(monster);    
         }
@@ -331,11 +329,11 @@ function initShowPlay(
         }
     
         // generate something gun-like
-        //let player = monsterGenerator(25, 0, 0, 2, 1);
-        let player = monsterGenerator(25, 16.360982887742765, 0.00021322149983513117, 1.0000392138221743, 1);
-        player.vx = 0.0002248813664260074;
-        player.vy = -0.003993673543372614;
-        player.vz = 0.0000019801980198019803;
+        let player = monsterGenerator(25, 0, 0, 2, 1);
+        // let player = monsterGenerator(25, 5.07165808153638, -0.45890176724638004, 0.8914910041084176, 1);
+        // player.vx = -0.00006201301945962632;
+        // player.vy = 0.003999519269289435;
+        // player.vz = 0.001714023082243618;
         
         let walkDistance = 0;
         // TODO can remove once we get our model under control
@@ -418,8 +416,8 @@ function initShowPlay(
                 player.vz = baseVelocity;
                 lastFloor = 0;
             }
-            // player.vx = vx;
-            // player.vy = vy;
+            player.vx = vx;
+            player.vy = vy;
             // player.vx = 0.000764026302672585;
             // player.vy = 0.003926355028372302;
             
@@ -434,7 +432,7 @@ function initShowPlay(
                     }
                     // shoot
                     let bullet = monsterGenerator(818, this.x + this.radius*cosZSide/3 + this.radius*cosZ*3, this.y + this.radius*sinZSide/3 + this.radius*sinZ*3, this.z + sinX * this.radius*3, .2);
-                    let bulletVelocity = 0.005; 
+                    let bulletVelocity = 0.05; 
                     bullet.update = function(this: Monster) {
                         return this.age > 9999;
                     }
@@ -551,7 +549,6 @@ function initShowPlay(
             animationFrameHandle = requestAnimationFrame(update);
 
             let diff = Math.min(99, now - then);
-            diff = 20;
             then = now;
 
             world.update(diff);

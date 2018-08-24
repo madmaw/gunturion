@@ -2,7 +2,7 @@ window.onload = function() {
     // init everything
 
     let chunkDimension = 20;
-    let activeTilesDimension = chunkDimension * 1;
+    let activeTilesDimension = chunkDimension * 5;
     let offscreenCanvas = document.getElementById('a') as HTMLCanvasElement;
 
     let loadingElement = document.getElementById('l');

@@ -12,3 +12,5 @@ const FLAG_DEATH_ANIMATION = true;
 const FLAG_ALLOW_JUMPING = true;
 const FLAG_SHAKY_CAMERA = true;
 const FLAG_CLEAN_UP_ENTITY = true;
+const FLAG_FIXED_STEP = 20;
+const FLAG_CHECK_INVALID_START_POSITION = true;
