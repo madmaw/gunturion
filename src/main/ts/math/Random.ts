@@ -6,13 +6,16 @@ interface RandomNumberGeneratorFactory {
     (seed: number): RandomNumberGenerator;
 }
 
-function sinRandomNumberGeneratorFactory(seed: number): RandomNumberGenerator {
-    return function (range?:number): number {
-        var x = Math.sin(seed++) * 1e5;
-        var r = x - Math.floor(x);
-        if (range) {
-            r = Math.floor(r * range);
-        }
-        return r;
+function sinRandomNumberGeneratorFactory(baseSeed: number): RandomNumberGeneratorFactory {
+    return function (bonusSeed: number) {
+        let seed = baseSeed + bonusSeed;
+        return function (range?:number): number {
+            var x = Math.sin(seed++) * 1e5;
+            var r = x - Math.floor(x);
+            if (range) {
+                r = (r * range) | 0;
+            }
+            return r;
+        }    
     }
 }

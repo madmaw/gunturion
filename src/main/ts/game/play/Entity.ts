@@ -1,3 +1,9 @@
+const SURFACE_BUFFER = .1;
+
+const SIDE_SCENERY = 0;
+const SIDE_FRIEND = 1;
+const SIDE_ENEMY = 2;
+const SIDE_NEUTRAL = 3;
 
 interface EntityBase {
     id: number;
@@ -13,12 +19,13 @@ interface EntityBase {
     gridCoordinateBuffer: WebGLBuffer;
     indicesBuffer: WebGLBuffer;
     indicesCount: number;
+    side: number;
 }
 
 interface Monster extends EntityBase {
     isMonster: 1;
     radius: number;
-    vx: number;
+    vx: number; 
     vy: number;
     vz: number;
     rx: number;
@@ -33,17 +40,19 @@ interface Monster extends EntityBase {
     restitution: number;
     visible: number;
     cycleLength: number;
-    side?: number;
     ignoreGravity?: number;
+    previousPosition?: Vector3;
+    previousVelocity?: Vector3;
 }
 
 interface Surface extends EntityBase {
     isMonster: 0; 
     normal: Vector3;
-    gridNormal: Vector3;
     points: Vector2[];
     worldToPoints: Matrix4;
     pointsToWorld: Matrix4;
+    chunkX: number;
+    chunkY: number;
     worldToPointsRotation: Matrix4;
     pointsToWorldRotation: Matrix4;
 }
@@ -58,6 +67,145 @@ interface MonsterGenerator {
         z: number, 
         radius: number
     ): Monster;
+}
+
+interface SurfaceGenerator {
+    (
+        x: number, 
+        y: number, 
+        z: number, 
+        width: number, 
+        height: number, 
+        chunkX: number, 
+        chunkY: number,
+        rotateX: number, 
+        rotateY: number, 
+        gridColor: Vector3, 
+        fillColor: Vector3
+    ): Surface;
+}
+
+function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
+    let nextId = 0;
+
+    return function(
+        x: number, 
+        y: number, 
+        z: number, 
+        width: number, 
+        height: number, 
+        chunkX: number, 
+        chunkY: number,
+        rotateX: number, 
+        rotateY: number, 
+        lineColor: Vector3, 
+        fillColor: Vector3
+    ) {
+        let surfaceId = --nextId;
+
+        let floorPositions = [
+            0, 0, 0, 0,  
+            width, 0, 0, 0, 
+            width, height, 0, 0, 
+            0, height, 0, 0
+        ];
+        let floorPositionBuffer = webglCreateArrayBuffer(gl, floorPositions);
+        
+        let lineScale = 1;
+        let lineX = width/lineScale;
+        let lineY = height/lineScale;
+        let aspectRatio = 1;
+        let gridCoordinates = [
+            0, 0, aspectRatio, 0,  
+            lineX, 0, aspectRatio, 0, 
+            lineX, lineY, aspectRatio, 0, 
+            0, lineY, aspectRatio, 0
+        ];
+        let gridCoordinateBuffer = webglCreateArrayBuffer(gl, gridCoordinates);
+
+        let floorIndices = [
+            // triangle 1
+            0, 1, 2,
+            // triangle 2
+            0, 2, 3
+        ];
+        let floorIndicesBuffer = webglCreateElementArrayBuffer(gl, floorIndices);
+
+        let worldToPointsRotationMatrix = matrix4Multiply(
+            matrix4Rotate(1, 0, 0, rotateX), 
+            matrix4Rotate(0, 1, 0, rotateY)
+        );
+        let worldToPointsMatrix = matrix4Multiply(
+            worldToPointsRotationMatrix, 
+            matrix4Translate(-x, -y, -z),
+        );
+        let pointsToWorldRotationMatrix = matrix4Multiply(
+            matrix4Rotate(0, 1, 0, -rotateY),
+            matrix4Rotate(1, 0, 0, -rotateX) 
+        );
+        let pointsToWorldMatrix = matrix4Multiply(
+            matrix4Translate(x, y, z), 
+            pointsToWorldRotationMatrix,
+        );
+        
+        let normal = vector3TransformMatrix4(0, 0, 1, pointsToWorldRotationMatrix);
+        let maxRotatedDimensions = vector3TransformMatrix4(
+            width + SURFACE_BUFFER, 
+            height + SURFACE_BUFFER, 
+            SURFACE_BUFFER, 
+            pointsToWorldRotationMatrix
+        );
+        let minRotatedDimensions = vector3TransformMatrix4(
+            -SURFACE_BUFFER, 
+            -SURFACE_BUFFER, 
+            -SURFACE_BUFFER, 
+            pointsToWorldRotationMatrix
+        );
+        let bounds: Rect3 = {
+            min: [
+                Math.min(x + minRotatedDimensions[0], x + maxRotatedDimensions[0]), 
+                Math.min(y + minRotatedDimensions[1], y + maxRotatedDimensions[1]), 
+                Math.min(z + minRotatedDimensions[2], z + maxRotatedDimensions[2])
+            ], 
+            max: [
+                Math.max(x + minRotatedDimensions[0], x + maxRotatedDimensions[0]), 
+                Math.max(y + minRotatedDimensions[1], y + maxRotatedDimensions[1]), 
+                Math.max(z + minRotatedDimensions[2], z + maxRotatedDimensions[2])
+            ]
+        }
+
+        let surface: Surface = {
+            isMonster: 0,
+            id: surfaceId--,
+            normal: normal,
+            points: [[0, 0], [width, 0], [width, height], [0, height]],
+            chunkX: chunkX, 
+            chunkY: chunkY,
+            x: x, 
+            y: y, 
+            z: z, 
+            lineColor: lineColor, 
+            lineWidth: 0.02/lineScale,
+            fillColor: fillColor, 
+            positionBuffer: floorPositionBuffer, 
+            gridCoordinateBuffer: gridCoordinateBuffer,
+            indicesBuffer: floorIndicesBuffer,
+            indicesCount: floorIndices.length,
+            worldToPoints: worldToPointsMatrix, 
+            pointsToWorld: pointsToWorldMatrix,
+            worldToPointsRotation: worldToPointsRotationMatrix, 
+            pointsToWorldRotation: pointsToWorldRotationMatrix,
+            side: SIDE_SCENERY,
+            cleanup: function() {
+                gl.deleteBuffer(gridCoordinateBuffer);
+                gl.deleteBuffer(floorIndicesBuffer);
+            },
+            bounds: function(this: Surface): Rect3 {
+                return bounds;
+            }
+        };
+        return surface;
+    }    
 }
 
 function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
@@ -417,7 +565,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
                     gl.deleteBuffer(barrycentricCoordinatesBuffer);
                 }
             },
-            side: 0,
+            side: SIDE_ENEMY,
             age: 0, 
             rx: rx, 
             ry: ry, 

@@ -8,7 +8,7 @@ interface CollisionPhysics {
 
 class World {
     activeMonsters: Monster[];
-    allEntities: Entity[];
+    allEntities: {[_: number]: Entity[]};
     activeTiles: Entity[][][];
     private activeTileArea: Rect2;
     
@@ -24,9 +24,11 @@ class World {
     age: number;
     bonusMillis: number;
 
+    private chunkDimensions: Vector2;
+
     constructor(
-        private activeTilesWidth: number, 
-        private activeTilesHeight: number, 
+        private activeChunksWidth: number, 
+        private activeChunksHeight: number, 
         private chunkWidth: number, 
         private chunkHeight: number,
         private chunkGenerator: ChunkGenerator,
@@ -35,17 +37,18 @@ class World {
         
     ) {
         this.activeTiles = array2dCreate(
-            activeTilesWidth, 
-            activeTilesHeight, 
+            activeChunksWidth, 
+            activeChunksHeight, 
             function() {
                 return [];
             }
         );
         this.activeMonsters = [];
         this.allEntities = [];
-        this.setCameraPosition(0, 0, 1, 0, 0, 0); 
         this.age = 0;
         this.bonusMillis = 0;
+        this.chunkDimensions = [chunkWidth, chunkHeight];
+        this.setCameraPosition(0, 0, 1, 0, 0, 0); 
     }
 
     public update(amt: number) {
@@ -68,13 +71,15 @@ class World {
             i--;
             let activeMonster = this.activeMonsters[i];
 
-
             activeMonster.age += amt;
             if( activeMonster.deathAge ) {
                 if( activeMonster.age > activeMonster.deathAge + this.deathAnimationTime ) {
                     // remove 
                     this.removeEntity(activeMonster);
                 }
+            } else if( !rect2Overlap(activeMonster.bounds(), this.activeTileArea, this.chunkDimensions) ) {
+                // it's outside the active area, kill it
+                this.removeEntity(activeMonster);
             } else {
                 let done = activeMonster.update(this, amt);
 
@@ -91,12 +96,12 @@ class World {
                 }
                 let amtRemaining = amt;
                 let collisionsRemaining = MAX_COLLISIONS;
+
                 while( !done ) {
     
                     let originalX = activeMonster.x;
                     let originalY = activeMonster.y;
                     let originalZ = activeMonster.z;
-    
 
                     this.removeEntityPosition(activeMonster); 
 
@@ -175,7 +180,16 @@ class World {
                                             let odz = relativeOrigin[2];
                                             let odsq = odx*odx+ody*ody+odz*odz
                                             if( odsq < activeMonster.radius*activeMonster.radius || vector2PolyContains(surface.points, relativeOrigin[0], relativeOrigin[1]) && odz < activeMonster.radius ) {
-                                                console.warn('started colliding with polygon, this will end badly');
+                                                console.warn(
+                                                    'started colliding with polygon, this will end badly', 
+                                                    {
+                                                        currentPosition: [originalX, originalY, originalZ], 
+                                                        currentVelocity: [activeMonster.vx, activeMonster.vy, activeMonster.vz], 
+                                                        previousPosition: activeMonster.previousPosition, 
+                                                        previousVelocity: activeMonster.previousVelocity,
+                                                        entity: activeMonster 
+                                                    }
+                                                );
                                             }    
                                         }                                        
                                     }
@@ -350,6 +364,10 @@ class World {
                     }
                 }
             }
+            if( FLAG_CHECK_INVALID_START_POSITION ) {
+                activeMonster.previousPosition = [activeMonster.x, activeMonster.y, activeMonster.z];
+                activeMonster.previousVelocity = [activeMonster.vx, activeMonster.vy, activeMonster.vz];
+            }
         }
 
     }
@@ -369,30 +387,60 @@ class World {
         this.cameraRotationY = rotationY;
         this.cameraRotationZ = rotationZ;
 
-        let minTileX = Math.floor(x);
-        let minTileY = Math.floor(y);
-        let maxTileX = Math.floor(x + this.activeTilesWidth);
-        let maxTileY = Math.floor(y + this.activeTilesHeight);
+        let minChunkX = Math.floor(x/this.chunkWidth - this.activeChunksWidth / 2);
+        let minChunkY = Math.floor(y/this.chunkHeight - this.activeChunksHeight / 2);
+        let maxChunkX = Math.floor(x/this.chunkWidth + this.activeChunksWidth / 2) - 1;
+        let maxChunkY = Math.floor(y/this.chunkHeight + this.activeChunksHeight / 2) - 1;
 
         if( this.activeTileArea == null ) {
             // generate everything
             this.activeTileArea = {
-                min: [minTileX, minTileY], 
-                max: [maxTileX, maxTileY]
+                min: [minChunkX, minChunkY], 
+                max: [maxChunkX, maxChunkY]
             }
             // generate the chunks
-            for( let chunkX=Math.floor(minTileX/this.chunkWidth); chunkX<Math.floor(maxTileX/this.chunkWidth); chunkX++) {
-                for( let chunkY=Math.floor(minTileY/this.chunkHeight); chunkY<Math.floor(maxTileY/this.chunkHeight); chunkY++) {
+            for( let chunkX=minChunkX; chunkX<=maxChunkX; chunkX++) {
+                for( let chunkY=minChunkY; chunkY<=maxChunkY; chunkY++) {
                     let entities = this.chunkGenerator(chunkX, chunkY);
                     for( let entity of entities ) {
                         this.addEntity(entity);
                     }
                 }
             }
-        } else {
-            // TODO work out which bits have fallen off the end and deactivate those entities
-            // also re-add any entities which might share the new area
-            // also remove any entities which are no longer on the map
+        } else if( FLAG_FOLLOW_CAMERA ) {
+            if( minChunkX != this.activeTileArea.min[0] || minChunkY != this.activeTileArea.min[1] ) {
+                let previousActiveTileArea = this.activeTileArea;
+                // TODO work out which bits have fallen off the end and deactivate those entities
+                // also remove any entities which are no longer on the map
+                this.activeTileArea = {
+                    min: [minChunkX, minChunkY], 
+                    max: [maxChunkX, maxChunkY]
+                }
+                for( let chunkX=minChunkX; chunkX<=maxChunkX; chunkX++) {
+                    for( let chunkY=minChunkY; chunkY<=maxChunkY; chunkY++) {
+                        if( rect2Contains(previousActiveTileArea, chunkX, chunkY) ) {
+                            // TODO re-add any entities which might share the new area
+
+                        } else {
+                            let toRemove = this.getEntitiesAt(chunkX, chunkY);
+                            for( let entity of toRemove ) {
+                                if( !entity.isMonster ) {
+                                    let surface = entity as Surface;
+                                    if( !rect2Contains(this.activeTileArea, surface.chunkX, surface.chunkY ) ) {
+                                        this.removeEntity(surface);
+                                    }
+                                }
+                            }
+                            toRemove.splice(0, toRemove.length);
+                            
+                            let entities = this.chunkGenerator(chunkX, chunkY);
+                            for( let entity of entities ) {
+                                this.addEntity(entity);
+                            }    
+                        }                     
+                    }
+                }
+            }
         }
     }
 
@@ -400,7 +448,12 @@ class World {
         // is it actually in our bounds?
         let overlap = this.addEntityPosition(entity);
         if( overlap ) {
-            this.allEntities.push(entity);
+            let entities = this.allEntities[entity.side];
+            if( entities ) {
+                entities.push(entity);
+            } else {
+                this.allEntities[entity.side] = [entity];
+            }
             if( entity.isMonster ) {
                 this.activeMonsters.push(entity);
             }
@@ -419,7 +472,10 @@ class World {
         if( entity.isMonster ) {
             arrayRemove(this.activeMonsters, entity);
         }
-        arrayRemove(this.allEntities, entity);
+        let sideEntities = this.allEntities[entity.side];
+        if( sideEntities ) {
+            arrayRemove(sideEntities, entity);
+        }
         this.removeEntityPosition(entity);
         if( FLAG_CLEAN_UP_ENTITY ) {
             entity.cleanup();
@@ -445,20 +501,30 @@ class World {
     }
 
     private iterateTiles(bounds: Rect2, f: (entities: Entity[], tileX?: number, tileY?: number) => void ): Rect2 {
-        let overlap = rect2Overlap(bounds, this.activeTileArea);
+        let overlap = rect2Overlap(bounds, this.activeTileArea, this.chunkDimensions);
         if( overlap ) {
-            let minTileX = Math.min(this.activeTilesWidth - 1, Math.max(0, Math.floor(overlap.min[0] - this.activeTileArea.min[0])));
-            let minTileY = Math.min(this.activeTilesWidth - 1, Math.max(0, Math.floor(overlap.min[1] - this.activeTileArea.min[1])));
-            let maxTileX = Math.min(this.activeTilesWidth - 1, Math.max(0, Math.floor(overlap.max[0] - this.activeTileArea.min[0])));
-            let maxTileY = Math.min(this.activeTilesWidth - 1, Math.max(0, Math.floor(overlap.max[1] - this.activeTileArea.min[1])));
-    
+            let minTileX = overlap.min[0];
+            let minTileY = overlap.min[1];
+            let maxTileX = overlap.max[0];
+            let maxTileY = overlap.max[1];
+            
             for( let x=minTileX; x<=maxTileX; x++ ) {
                 for( let y=minTileY; y<=maxTileY; y++ ) {
-                    f(this.activeTiles[x][y], x, y);
+                    f(this.getEntitiesAt(x, y), x, y);
                 }
             }
         }
         return overlap;
+    }
+
+    private getEntitiesAt(chunkX: number, chunkY: number): Entity[] {
+        let result: Entity[];
+        if( rect2Contains(this.activeTileArea, chunkX, chunkY) ) {
+            let xm = numberPositiveMod(chunkX, this.activeChunksWidth);
+            let ym = numberPositiveMod(chunkY, this.activeChunksHeight);
+            result = this.activeTiles[xm][ym];
+        }
+        return result;
     }
 
 }
