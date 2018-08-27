@@ -88,7 +88,7 @@ class World {
                 // console.log('velocity', activeMonster.vx, activeMonster.vy, activeMonster.vz);        
 
                 if( !activeMonster.ignoreGravity ) {
-                    activeMonster.vz -= amt * .00001;
+                    activeMonster.vz -= amt * .00005;
                 }
                 if( done ) {
                     // it wants to be removed
@@ -297,8 +297,9 @@ class World {
                                                 let angleX = Math.acos(collisionRelativePosition[2] / activeMonster.radius);
                                                 // console.log('angle z/x', angleZ, angleX);
                                                 // console.log('collision time', minCollisionTime);
-                                                toMatrix = matrix4MultiplyStack([matrix4Rotate(1, 0, 0, angleX), matrix4Rotate(0, 0, 1, angleZ), surface.worldToPointsRotation]);
-                                                fromMatrix = matrix4MultiplyStack([matrix4Rotate(0, 0, 1, -angleZ), matrix4Rotate(1, 0, 0, -angleX), surface.pointsToWorldRotation]);
+                                                toMatrix = matrix4MultiplyStack([matrix4Rotate(1, 0, 0, angleX), matrix4Rotate(0, 0, 1, angleZ), surface.worldToPointsRotation, ]);
+                                                //fromMatrix = matrix4Invert(toMatrix);
+                                                fromMatrix = matrix4MultiplyStack([surface.pointsToWorldRotation, matrix4Rotate(0, 0, 1, -angleZ), matrix4Rotate(1, 0, 0, -angleX), ]);
                                             } else {
                                                 toMatrix = surface.worldToPointsRotation;
                                                 fromMatrix = surface.pointsToWorldRotation;
@@ -357,7 +358,7 @@ class World {
                         if( minCollisionPhysics ) {
                             minCollisionPhysics();
                         }
-                        done = activeMonster.deathAge || amtRemaining <= ERROR_MARGIN && collisionsRemaining--;
+                        done = !collisionsRemaining-- || amtRemaining <= ERROR_MARGIN || activeMonster.deathAge;
                     } else {
                         this.addEntityPosition(activeMonster);
                         done = true;

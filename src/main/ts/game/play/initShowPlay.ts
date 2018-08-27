@@ -378,7 +378,7 @@ function initShowPlay(
             let running = keyStates[16] || forward < lastRunningRelease;
             let jumping = keyStates[32];
             
-            let baseVelocity = 0.004;
+            let baseVelocity = .004;
             let forwardVelocity = baseVelocity;
             if( running ) {
                 forwardVelocity*=2;
@@ -413,7 +413,7 @@ function initShowPlay(
                 walkDistance -= baseVelocity * amt;
             }
             if( FLAG_ALLOW_JUMPING && jumping && lastFloor > jumping ) {
-                player.vz = baseVelocity;
+                player.vz = .02;
                 lastFloor = 0;
             }
             player.vx = vx;
@@ -465,7 +465,7 @@ function initShowPlay(
             gl.uniformMatrix4fv(uProjectionMatrix, false, projectionMatrix);
             gl.uniformMatrix4fv(uViewMatrix, false, viewMatrix);
             gl.uniformMatrix4fv(uPreviousViewMatrix, false, previousViewMatrix);
-            gl.uniform1f(uAmbientLight, .05);
+            gl.uniform1f(uAmbientLight, .1);
             if( FLAG_MUZZLE_FLASH ) {
                 let shotLightBonus = Math.max(0, lastShot + shotInterval/2 - world.age)/(shotInterval/2);
                 gl.uniform2f(uCameraLight, 12 + shotLightBonus, .5 + shotLightBonus*.2);    
