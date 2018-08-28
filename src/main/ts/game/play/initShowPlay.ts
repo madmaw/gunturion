@@ -15,6 +15,7 @@ const V_RELATIVE_POSITION = 'vRelativePosition_';
 const V_GRID_COORDINATE = 'vGridCoordinate_';
 const V_SCREEN_COORDINATE = 'vScreenCoordinate_';
 
+const C_BLUR_ITERATIONS = 7;
 
 let vertexShaderSource = `
 precision lowp float;
@@ -78,11 +79,15 @@ varying vec3 ${V_RELATIVE_POSITION};
 varying vec3 ${V_GRID_COORDINATE};
 varying vec4 ${V_SCREEN_COORDINATE};
 
-vec4 getSampleColor(in vec4 currentColor, in vec2 screenCoordinate, inout float count) {
+vec4 getSampleColor(vec2 screenCoordinate, int div, inout float count) {
     vec4 previousColor = texture2D(${U_PREVIOUS}, screenCoordinate);
-    float amt = (previousColor.a  - currentColor.a+ 1.) /2.;
-    count += amt * (.3 + currentColor.a/2.3);
-    return mix(currentColor, previousColor, amt);    
+    if( previousColor.a > .1 ) {
+        float mult = ${C_BLUR_ITERATIONS}./float(${C_BLUR_ITERATIONS} - div); 
+        count += mult;
+        return previousColor * mult;
+    } else {
+        return vec4(0.);
+    }
 }
 
 void main() {
@@ -128,18 +133,19 @@ void main() {
     // blur
     vec2 textureCoordinate = (${V_SCREEN_COORDINATE}.xy/${V_SCREEN_COORDINATE}.w)/2. + .5;
     float count = 0.;
-    vec4 previous = getSampleColor(current, textureCoordinate, count);
-    for( int i=1; i<7; ++i ) {
-        float f = float(i*i+3)/2.;
+    vec4 previous = getSampleColor(textureCoordinate, 0, count);
+    for( int i=1; i<${C_BLUR_ITERATIONS}; ++i ) {
+        float f = float(i*i+2)/2.;
         //float f = float(i);
-        previous += getSampleColor(current, textureCoordinate + vec2(${U_PREVIOUS_DIMENSION}.x, 0.) * f, count);
-        previous += getSampleColor(current, textureCoordinate - vec2(${U_PREVIOUS_DIMENSION}.x, 0.) * f, count);
-        previous += getSampleColor(current, textureCoordinate + vec2(0., ${U_PREVIOUS_DIMENSION}.y) * f, count);
-        previous += getSampleColor(current, textureCoordinate - vec2(0., ${U_PREVIOUS_DIMENSION}.y) * f, count);
+        previous += getSampleColor(textureCoordinate + vec2(${U_PREVIOUS_DIMENSION}.x, 0.) * f, i, count);
+        previous += getSampleColor(textureCoordinate - vec2(${U_PREVIOUS_DIMENSION}.x, 0.) * f, i, count);
+        previous += getSampleColor(textureCoordinate + vec2(0., ${U_PREVIOUS_DIMENSION}.y) * f, i, count);
+        previous += getSampleColor(textureCoordinate - vec2(0., ${U_PREVIOUS_DIMENSION}.y) * f, i, count);
     }
     if( count > 0. ) {
-        previous /= count;
-        current = vec4(mix(current.rgb, previous.rgb, .55), current.a);
+        previous /= count;          
+        float focus = sqrt(sqrt(previous.a));
+        current = vec4(current.rgb * focus * 1.3 + previous.rgb * (1.4 - focus*.8), current.a);
     }
 
     gl_FragColor = current;
@@ -153,10 +159,6 @@ interface ShowPlay {
 function initShowPlay(
     offscreenCanvas: HTMLCanvasElement,
     gl: WebGLRenderingContext,
-    activeChunksWidth: number, 
-    activeChunksHeight: number, 
-    chunkWidth: number, 
-    chunkHeight: number, 
     chunkGenerator: ChunkGenerator, 
     monsterGenerator: MonsterGenerator, 
     deathAnimationTime: number, 
@@ -165,8 +167,6 @@ function initShowPlay(
     let canvas = document.getElementById('b') as HTMLCanvasElement;
     let context = canvas.getContext('2d');
 
-    let visibleDistance = 80;//Math.min(activeTilesWidth, activeTilesHeight)/2;
-    
     let textureData: Uint8Array;
     let textureImageData: ImageData;
     let sourceTexture: WebGLTexture;
@@ -207,7 +207,7 @@ function initShowPlay(
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, canvasWidth, canvasHeight);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
 
-        projectionMatrix = matrix4Perspective(Math.PI/4, canvasWidth/canvasHeight, .5, visibleDistance);
+        projectionMatrix = matrix4Perspective(Math.PI/4, canvasWidth/canvasHeight, CONST_BASE_RADIUS/2, CONST_VISIBLE_DISTANCE);
         let flipMatrix = matrix4Scale(1, -1, 1);
         projectionMatrix = matrix4Multiply(projectionMatrix, flipMatrix);
     
@@ -275,7 +275,7 @@ function initShowPlay(
     let uCycleRadians = gl.getUniformLocation(shaderProgram, U_CYCLE_RADIANS);
     let uOffsetMultiplier = gl.getUniformLocation(shaderProgram, U_OFFSET_MULTIPLIER);
 
-    gl.uniform1f(uVisibleDistance, visibleDistance);
+    gl.uniform1f(uVisibleDistance, CONST_VISIBLE_DISTANCE);
     
     return function() {
         let animationFrameHandle: number;
@@ -298,7 +298,15 @@ function initShowPlay(
     
         window.onresize = resize;
 
-        let world = new World(activeChunksWidth, activeChunksHeight, chunkWidth, chunkHeight, chunkGenerator, monsterGenerator, deathAnimationTime);
+        let world = new World(
+            CONST_ACTIVE_CHUNKS_WIDTH,
+            CONST_ACTIVE_CHUNKS_HEIGHT, 
+            CONST_CHUNK_WIDTH, 
+            CONST_CHUNK_HEIGHT, 
+            chunkGenerator, 
+            monsterGenerator, 
+            deathAnimationTime
+        );
 
         let then = 0;
         let frames = 0;
@@ -345,7 +353,7 @@ function initShowPlay(
         }
     
         // generate something gun-like
-        let player = monsterGenerator(25, 0, 0, 2, 1);
+        let player = monsterGenerator(25, 0, 0, 2, CONST_BASE_RADIUS);
         // let player = monsterGenerator(25, 36.53720576658002, -10.998682604682323, 1.3071719462051747, 1);
         // player.vx = 0.003461038012875774;
         // player.vy = -0.001968901198244335;
@@ -355,17 +363,17 @@ function initShowPlay(
         // TODO can remove once we get our model under control
         player.ry = 0;
         // end TODO
-        player.visible = 0;
+        //player.visible = 0;
         player.side = SIDE_PLAYER;
         player.lineColor = [.7, .7, .3];
         player.fillColor = [.2, .2, 0];
         // make it look like a gun
-        let scale = .2;
+        let scale = .15;
         
         player.specialMatrix = matrix4MultiplyStack([
-            matrix4Translate(player.radius/3, -player.radius/3, 0), 
+            matrix4Translate(player.radius, -player.radius/CONST_GUN_BARREL_OFFSET_DIV, 0), 
             matrix4Rotate(0, 1, 0, Math.PI/2), 
-            matrix4Scale(scale, scale, 3)
+            matrix4Scale(scale, scale, CONST_GUN_BARREL_LENGTH_MULT)
         ]);
         //player.specialMatrix = matrix4Translate(2, 0, -player.radius/2);
         let lastShot = 0;
@@ -429,7 +437,7 @@ function initShowPlay(
                 walkDistance -= baseVelocity * amt;
             }
             if( FLAG_ALLOW_JUMPING && jumping && lastFloor > jumping ) {
-                player.vz = .02;
+                player.vz = .015;
                 lastFloor = 0;
             }
             player.vx = vx;
@@ -445,7 +453,13 @@ function initShowPlay(
                         lastShot = this.age;
                     }
                     // shoot
-                    let bullet = monsterGenerator(818, this.x + this.radius*cosZSide/3 + this.radius*cosZ*3, this.y + this.radius*sinZSide/3 + this.radius*sinZ*3, this.z + sinX * this.radius*3, .2);
+                    let bullet = monsterGenerator(
+                        818, 
+                        this.x + this.radius*cosZSide/CONST_GUN_BARREL_OFFSET_DIV + this.radius*cosZ*(CONST_GUN_BARREL_LENGTH_MULT+CONST_BULLET_RADIUS), 
+                        this.y + this.radius*sinZSide/CONST_GUN_BARREL_OFFSET_DIV + this.radius*sinZ*(CONST_GUN_BARREL_LENGTH_MULT+CONST_BULLET_RADIUS), 
+                        this.z + sinX * this.radius*(CONST_GUN_BARREL_LENGTH_MULT + CONST_BULLET_RADIUS), 
+                        CONST_BULLET_RADIUS
+                    );
                     let bulletVelocity = 0.05; 
                     bullet.update = function(this: Monster) {
                         return this.age > 9999;
@@ -462,7 +476,7 @@ function initShowPlay(
                     bullet.vz = sinX * bulletVelocity;
                     bullet.fillColor = this.fillColor;
                     bullet.lineColor = this.lineColor;
-                    bullet.ignoreGravity = 1;
+                    bullet.gravityMultiplier = 0;
 
                     world.addEntity(bullet);
                 }
@@ -587,7 +601,7 @@ function initShowPlay(
             world.setCameraPosition(
                 player.x, 
                 player.y, 
-                player.z + player.radius*.8 + deadness * visibleDistance/2, 
+                player.z + player.radius*.8 + deadness * CONST_VISIBLE_DISTANCE/2, 
                 (player.rx + Math.PI/2) * (1 - deadness), 
                 player.ry, 
                 player.rz - Math.PI/2
@@ -598,9 +612,9 @@ function initShowPlay(
             if( FLAG_SHAKY_CAMERA ) {
                 let screenShake = Math.max(0, (lastShot + 99 - world.age)/999);
                 walkTranslationMatrix = matrix4Translate(
-                    Math.sin(walkDistance)/8 + (Math.random() - .5)*screenShake, 
+                    Math.sin(walkDistance)*player.radius/8 + (Math.random() - .5)*screenShake, 
                     screenShake, 
-                    Math.abs(Math.cos(walkDistance)/8) + (Math.random() - .5)*screenShake
+                    Math.abs(Math.cos(walkDistance)*player.radius/8) + (Math.random() - .5)*screenShake
                 );
             }
             let rotationMatrixX = matrix4Rotate(1, 0, 0, world.cameraRotationX);

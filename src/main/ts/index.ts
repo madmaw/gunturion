@@ -1,7 +1,7 @@
 window.onload = function() {
     // init everything
 
-    let chunkDimension = 12;  
+    let chunkDimension = 10;  
     let activeChunksCount = 14;
     let offscreenCanvas = document.getElementById('a') as HTMLCanvasElement;
 
@@ -20,7 +20,6 @@ window.onload = function() {
     let monsterGenerator = monsterGeneratorFactory(gl);
     let surfaceGenerator = surfaceGeneratorFactory(gl);
     let chunkGenerator = flatChunkGeneratorFactory(
-        chunkDimension, chunkDimension, 
         surfaceGenerator, 
         monsterGenerator, 
         rngFactory
@@ -29,14 +28,10 @@ window.onload = function() {
     let showPlay = initShowPlay(
         offscreenCanvas, 
         gl, 
-        activeChunksCount, 
-        activeChunksCount, 
-        chunkDimension, 
-        chunkDimension, 
         chunkGenerator, 
         monsterGenerator, 
         400, 
-        [.2, 0, .2]
+        [.4, .2, .4]
     );
 
     let showHome = initShowHome(showPlay);  

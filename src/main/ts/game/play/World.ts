@@ -95,9 +95,7 @@ class World {
                 }
 
                 if( updatableEntity.type == 1 ) {
-                    if( !updatableEntity.ignoreGravity ) {
-                        updatableEntity.vz -= amt * .00005;
-                    }
+                    updatableEntity.vz -= amt * .00005 * updatableEntity.gravityMultiplier;
                     let amtRemaining = amt;
                     let collisionsRemaining = MAX_COLLISIONS;
                     let updatableMonster = updatableEntity as Monster;

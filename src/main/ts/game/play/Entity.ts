@@ -52,7 +52,7 @@ interface Monster extends EntityBase, Updatable, Bounded, Rendered {
     restitution: number;
     visible: number;
     cycleLength: number;
-    ignoreGravity?: number;
+    gravityMultiplier: number;
     previousPosition?: Vector3;
     previousVelocity?: Vector3;
 }
@@ -601,6 +601,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
             indicesBuffer: indicesBuffer, 
             indicesCount: indices.length, 
             positionBuffer: positionBuffer, 
+            gravityMultiplier: 1,
             centerPointsBuffer: centerPointsBuffer,
             bounds: bounds, 
             cycleLength: cycleLength
