@@ -1,0 +1,1 @@
+const CONST_GL_SAFE_BITS = 24;

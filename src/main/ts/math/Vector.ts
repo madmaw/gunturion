@@ -36,6 +36,18 @@ function vector3Mix(v1: Vector3, v2: Vector3, amt: number) {
     return result;
 }
 
+function vector3Normalize(v: Vector3) {
+    return vector3Divide(v, vector3Length(v));
+}
+
+function vector3Subtract(v1: Vector3, v2: Vector3): Vector3 {
+    return [v1[0] - v2[0], v1[1] - v2[1], v1[2] - v2[2]];
+}
+
+function vector3Divide(v: Vector3, d: number): Vector3 {
+    return [v[0]/d, v[1]/d, v[2]/d];
+}
+
 function vector2PolyContains(poly: Vector2[], x: number, y: number): boolean {
     // from https://stackoverflow.com/questions/22521982/check-if-point-inside-a-polygon
 

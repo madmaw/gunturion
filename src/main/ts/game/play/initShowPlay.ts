@@ -1,3 +1,5 @@
+///<reference path="../../constants.ts"/>
+
 const A_VERTEX_POSITION = 'aVertexPosition_';
 const A_OFFSET_POINT = 'aOffsetPoint_';
 const A_GRID_COORDINATE = 'aGridCoordinate_';
@@ -12,6 +14,7 @@ const U_OFFSET_MULTIPLIER = 'uOffsetMultiplier_';
 const V_RELATIVE_POSITION = 'vRelativePosition_';
 const V_GRID_COORDINATE = 'vGridCoordinate_';
 const V_SCREEN_COORDINATE = 'vScreenCoordinate_';
+
 
 let vertexShaderSource = `
 precision lowp float;
@@ -50,12 +53,16 @@ const U_LINE_WIDTH = 'uLineWidth_';
 const U_VISIBLE_DISTANCE = 'uVisibleDistance_';
 const U_CAMERA_LIGHT = 'uCameraLight_';
 const U_AMBIENT_LIGHT = 'uAmbientLight_';
+const U_GRID_DIMENSION= 'uGridDimension_';
+const U_GRID_LIGHTING = 'uGridLighting_';
 const U_PREVIOUS = 'uPrevious_';
 const U_PREVIOUS_DIMENSION = 'uPreviousDimension_';
 
 let fragmentShaderSource = `
 #extension GL_OES_standard_derivatives : enable
 precision lowp float;
+
+
 uniform vec3 ${U_FILL_COLOR};
 uniform vec3 ${U_LINE_COLOR};
 uniform float ${U_LINE_WIDTH};
@@ -65,6 +72,8 @@ uniform float ${U_AMBIENT_LIGHT};
 uniform sampler2D ${U_PREVIOUS};
 uniform vec2 ${U_PREVIOUS_DIMENSION};
 uniform lowp int ${U_GRID_MODE};
+uniform vec2 ${U_GRID_DIMENSION};
+uniform float ${U_GRID_LIGHTING}[4];
 varying vec3 ${V_RELATIVE_POSITION};
 varying vec3 ${V_GRID_COORDINATE};
 varying vec4 ${V_SCREEN_COORDINATE};
@@ -89,20 +98,33 @@ void main() {
     
     float lighting = clamp((${U_CAMERA_LIGHT}.x-distance) / ${U_CAMERA_LIGHT}.x, 0., 1.) * ${U_CAMERA_LIGHT}.y + ${U_AMBIENT_LIGHT};
     float tileness = 1.;
+    vec3 fillColor;
     if( ${U_GRID_MODE} > 0 ) {
         vec3 d = fwidth(${V_GRID_COORDINATE});
         vec3 a3 = smoothstep(vec3(0.0), d*max(1., ${U_LINE_WIDTH} * (1. - distance/${U_VISIBLE_DISTANCE})), ${V_GRID_COORDINATE});
         tileness = min(min(a3.x, a3.y), a3.z);
+        fillColor = ${U_FILL_COLOR};
     } else {
-        float mn = min(${V_GRID_COORDINATE}.x - floor(${V_GRID_COORDINATE}.x), (${V_GRID_COORDINATE}.y - floor(${V_GRID_COORDINATE}.y))*${V_GRID_COORDINATE}.z);
-        float mx = max(${V_GRID_COORDINATE}.x - floor(${V_GRID_COORDINATE}.x), (${V_GRID_COORDINATE}.y - floor(${V_GRID_COORDINATE}.y))*${V_GRID_COORDINATE}.z);
+        float gx = floor(${V_GRID_COORDINATE}.x);
+        float gy = floor(${V_GRID_COORDINATE}.y);
+        float mn = min(${V_GRID_COORDINATE}.x - gx, (${V_GRID_COORDINATE}.y - gy)*${V_GRID_COORDINATE}.z);
+        float mx = max(${V_GRID_COORDINATE}.x - gx, (${V_GRID_COORDINATE}.y - gy)*${V_GRID_COORDINATE}.z);
         if( mn < ${U_LINE_WIDTH} || mx > (1. - ${U_LINE_WIDTH}) ) {
             float m = min(mn, 1. - mx);
             tileness = m / ${U_LINE_WIDTH} * (1. - max(0., distance/${U_VISIBLE_DISTANCE}))*(1. - ${U_LINE_WIDTH}) + ${U_LINE_WIDTH};
             tileness *= tileness * tileness;
         }    
+        float bit = gy*${U_GRID_DIMENSION}.x+gx;
+        for( int i=0; i<4; i++ ) {
+            if( bit < ${CONST_GL_SAFE_BITS}. && bit >= 0. ) {
+                lighting = max(lighting, mod(floor(${U_GRID_LIGHTING}[i]/pow(2.,bit)), 2.));
+            } 
+            bit -= ${CONST_GL_SAFE_BITS}.;
+        }
+
+        fillColor = ${U_FILL_COLOR};
     }
-    vec4 current = vec4(mix(${U_LINE_COLOR}, mix(vec3(0.), ${U_FILL_COLOR}, lighting), tileness), fogginess);
+    vec4 current = vec4(mix(${U_LINE_COLOR}, mix(vec3(0.), fillColor, lighting), tileness), fogginess);
     // blur
     vec2 textureCoordinate = (${V_SCREEN_COORDINATE}.xy/${V_SCREEN_COORDINATE}.w)/2. + .5;
     float count = 0.;
@@ -116,8 +138,8 @@ void main() {
         previous += getSampleColor(current, textureCoordinate - vec2(0., ${U_PREVIOUS_DIMENSION}.y) * f, count);
     }
     if( count > 0. ) {
-        //previous /= count;
-        //current = vec4(mix(current.rgb, previous.rgb, .55), current.a);
+        previous /= count;
+        current = vec4(mix(current.rgb, previous.rgb, .55), current.a);
     }
 
     gl_FragColor = current;
@@ -248,6 +270,8 @@ function initShowPlay(
     let uPrevious = gl.getUniformLocation(shaderProgram, U_PREVIOUS);
     let uPreviousDimension = gl.getUniformLocation(shaderProgram, U_PREVIOUS_DIMENSION);
     let uGridMode = gl.getUniformLocation(shaderProgram, U_GRID_MODE);
+    let uGridDimension = gl.getUniformLocation(shaderProgram, U_GRID_DIMENSION);
+    let uGridLighting = gl.getUniformLocation(shaderProgram, U_GRID_LIGHTING);
     let uCycleRadians = gl.getUniformLocation(shaderProgram, U_CYCLE_RADIANS);
     let uOffsetMultiplier = gl.getUniformLocation(shaderProgram, U_OFFSET_MULTIPLIER);
 
@@ -275,14 +299,6 @@ function initShowPlay(
         window.onresize = resize;
 
         let world = new World(activeChunksWidth, activeChunksHeight, chunkWidth, chunkHeight, chunkGenerator, monsterGenerator, deathAnimationTime);
-        let entityCount = 0;
-        for( let i=0; i<entityCount; i++ ) {
-            let x = (Math.random() * activeChunksWidth - activeChunksWidth/2) * chunkWidth;
-            let y = (Math.random() * activeChunksHeight - activeChunksHeight/2) * chunkHeight;
-            let z = Math.random() * 2 + 3;
-            let monster = monsterGenerator((Math.random() * 9999999) | 0, x, y, z, 1);
-            world.addEntity(monster);    
-        }
 
         let then = 0;
         let frames = 0;
@@ -340,7 +356,7 @@ function initShowPlay(
         player.ry = 0;
         // end TODO
         player.visible = 0;
-        player.side = SIDE_FRIEND;
+        player.side = SIDE_PLAYER;
         player.lineColor = [.7, .7, .3];
         player.fillColor = [.2, .2, 0];
         // make it look like a gun
@@ -358,7 +374,7 @@ function initShowPlay(
         if( FLAG_ALLOW_JUMPING ) {
             player.onCollision = function(this: Monster, other: Entity) {
                 let result: number;
-                if( other.isMonster ) {
+                if( other.type ) {
                     this.deathAge = this.age;
                 } else {
                     let surface = other as Surface;
@@ -436,7 +452,7 @@ function initShowPlay(
                     }
                     bullet.side = SIDE_NEUTRAL;
                     bullet.onCollision = function(this: Monster, withEntity: Entity) {
-                        if( withEntity.isMonster ) {
+                        if( withEntity.type ) {
                             this.deathAge = this.age;
                         }
                     }
@@ -466,6 +482,7 @@ function initShowPlay(
             gl.uniformMatrix4fv(uViewMatrix, false, viewMatrix);
             gl.uniformMatrix4fv(uPreviousViewMatrix, false, previousViewMatrix);
             gl.uniform1f(uAmbientLight, .1);
+            
             if( FLAG_MUZZLE_FLASH ) {
                 let shotLightBonus = Math.max(0, lastShot + shotInterval/2 - world.age)/(shotInterval/2);
                 gl.uniform2f(uCameraLight, 12 + shotLightBonus, .5 + shotLightBonus*.2);    
@@ -475,72 +492,78 @@ function initShowPlay(
     
             // draw all the entities
             for( let side in world.allEntities ) {
-                let entities = world.allEntities[side];
-                for( let entity of entities ) {
-                    if( FLAG_GL_CULL_EXPLOSIONS ) {
-                        gl.enable(gl.CULL_FACE);
-                    }
-        
-                    webglBindAttributeBuffer(gl, entity.positionBuffer, aVertexPosition, 4);
-                    webglBindAttributeBuffer(gl, entity.gridCoordinateBuffer, aGridCoordinate, 4);
-                    
-                    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, entity.indicesBuffer);
-        
-                    let translationMatrix = matrix4Translate(entity.x, entity.y, entity.z);
-                    let lineColor = entity.lineColor;
-                    let fillColor = entity.fillColor;
-                    gl.uniform1f(uLineWidth, entity.lineWidth);
-                    gl.uniform1i(uGridMode, entity.isMonster);
-        
-                    let offsetPointsBuffer: WebGLBuffer;
-                    if( entity.isMonster ) {
-                        offsetPointsBuffer = entity.centerPointsBuffer;
-                        let rotationMatrixX = matrix4Rotate(0, 1, 0, -entity.rx);
-                        let rotationMatrixY = matrix4Rotate(1, 0, 0, -entity.ry);
-                        let rotationMatrixZ = matrix4Rotate(0, 0, 1, -entity.rz);
-        
-                        let matrixStack = [translationMatrix, rotationMatrixZ, rotationMatrixY, rotationMatrixX, entity.specialMatrix];
-        
-                        let cycle = entity.age / entity.cycleLength;
-                        let offsetMultiplier = 0;
-                        if( entity.deathAge ) {
-                            if( !FLAG_GL_CULL_EXPLOSIONS ) {
-                                gl.disable(gl.CULL_FACE);
-                            }
-                            let b = (entity.age - entity.deathAge)/deathAnimationTime;
-                            let bsq = b * b;
-                            let scale = 1 - bsq*.99;
-                            offsetMultiplier = bsq * 3 / scale; 
-                            // explode away from the camera
-                            //matrixStack.splice(1, 0, matrix4Scale(1 - b * sinZ, 1 - b * cosZ, 1 - b));
-                            matrixStack.splice(1, 0, matrix4Scale(scale, scale, scale));
-                            lineColor = vector3Mix(fogColor, lineColor, bsq);
-                            fillColor = vector3Mix(fogColor, fillColor, bsq);
-                            // do one last animation
-                            cycle = entity.deathAge / entity.cycleLength + (entity.age - entity.deathAge)/deathAnimationTime;
+                if( side as any != SIDE_BUILDING ) {
+                    let entities = world.allEntities[side];
+                    for( let entity of entities ) {
+                        let rendered = entity as Rendered;
+                        if( FLAG_GL_CULL_EXPLOSIONS ) {
+                            gl.enable(gl.CULL_FACE);
                         }
-                        gl.uniform1f(uCycleRadians, cycle * Math.PI * 2);
-                        gl.uniform1f(uOffsetMultiplier, offsetMultiplier);
+            
+                        webglBindAttributeBuffer(gl, rendered.positionBuffer, aVertexPosition, 4);
+                        webglBindAttributeBuffer(gl, rendered.gridCoordinateBuffer, aGridCoordinate, 4);
+                        
+                        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, rendered.indicesBuffer);
+            
+                        let lineColor = rendered.lineColor;
+                        let fillColor = rendered.fillColor;
+
+                        gl.uniform1f(uLineWidth, rendered.lineWidth);
+                        gl.uniform1i(uGridMode, entity.type);
+
+                        let offsetPointsBuffer: WebGLBuffer;
+                        if( entity.type ) {
+                            let monster = entity as Monster;
+                            offsetPointsBuffer = monster.centerPointsBuffer;
+                            let translationMatrix = matrix4Translate(monster.x, monster.y, monster.z);
+                            let rotationMatrixX = matrix4Rotate(0, 1, 0, -monster.rx);
+                            let rotationMatrixY = matrix4Rotate(1, 0, 0, -monster.ry);
+                            let rotationMatrixZ = matrix4Rotate(0, 0, 1, -monster.rz);
+            
+                            let matrixStack = [translationMatrix, rotationMatrixZ, rotationMatrixY, rotationMatrixX, monster.specialMatrix];
+            
+                            let cycle = entity.age / monster.cycleLength;
+                            let offsetMultiplier = 0;
+                            if( monster.deathAge ) {
+                                if( !FLAG_GL_CULL_EXPLOSIONS ) {
+                                    gl.disable(gl.CULL_FACE);
+                                }
+                                let b = (entity.age - monster.deathAge)/deathAnimationTime;
+                                let bsq = b * b;
+                                let scale = 1 - bsq*.99;
+                                offsetMultiplier = bsq * 3 / scale; 
+                                // explode away from the camera
+                                //matrixStack.splice(1, 0, matrix4Scale(1 - b * sinZ, 1 - b * cosZ, 1 - b));
+                                matrixStack.splice(1, 0, matrix4Scale(scale, scale, scale));
+                                lineColor = vector3Mix(fogColor, lineColor, bsq);
+                                fillColor = vector3Mix(fogColor, fillColor, bsq);
+                                // do one last animation
+                                cycle = monster.deathAge / monster.cycleLength + (monster.age - monster.deathAge)/deathAnimationTime;
+                            }
+                            gl.uniform1f(uCycleRadians, cycle * Math.PI * 2);
+                            gl.uniform1f(uOffsetMultiplier, offsetMultiplier);
+            
+                            let modelMatrix = matrix4MultiplyStack(matrixStack);
+                            gl.uniformMatrix4fv(uModelMatrix, false, modelMatrix);
+            
+            
+                        } else {
+                            let surface = entity as Surface;
+                            // doesn't get used, but put something in to prevent errors from disposed buffers
+                            offsetPointsBuffer = surface.gridCoordinateBuffer;
         
-                        let modelMatrix = matrix4MultiplyStack(matrixStack);
-                        gl.uniformMatrix4fv(uModelMatrix, false, modelMatrix);
-        
-        
-                    } else {
-                        // doesn't get used, but put something in to prevent errors from disposed buffers
-                        offsetPointsBuffer = entity.gridCoordinateBuffer;
-    
-                        let surface = entity as Surface;
-                        gl.uniformMatrix4fv(uModelMatrix, false, surface.pointsToWorld);
+                            gl.uniformMatrix4fv(uModelMatrix, false, surface.pointsToWorld);
+                            gl.uniform2f(uGridDimension, surface.width, surface.height);
+                            gl.uniform1fv(uGridLighting, surface.gridLighting);
+                        }
+                        webglBindAttributeBuffer(gl, offsetPointsBuffer, aOffsetPoint, 4); 
+            
+                        gl.uniform3fv(uLineColor, lineColor);
+                        gl.uniform3fv(uFillColor, fillColor);
+
+                        gl.drawElements(gl.TRIANGLES, rendered.indicesCount, FLAG_GL_16_BIT_INDEXES?gl.UNSIGNED_SHORT:gl.UNSIGNED_BYTE, 0);
                     }
-                    webglBindAttributeBuffer(gl, offsetPointsBuffer, aOffsetPoint, 4); 
-        
-                    gl.uniform3fv(uFillColor, fillColor);
-                    gl.uniform3fv(uLineColor, lineColor);
-        
-                    gl.drawElements(gl.TRIANGLES, entity.indicesCount, FLAG_GL_16_BIT_INDEXES?gl.UNSIGNED_SHORT:gl.UNSIGNED_BYTE, 0);
-                }
-                    
+                }                    
             }
         }
 

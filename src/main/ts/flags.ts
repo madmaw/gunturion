@@ -14,5 +14,5 @@ const FLAG_SHAKY_CAMERA = true;
 const FLAG_CLEAN_UP_ENTITY = true;
 const FLAG_FIXED_STEP = 5;
 const FLAG_CHECK_INVALID_START_POSITION = true;
-const FLAG_FOLLOW_CAMERA = false
+const FLAG_FOLLOW_CAMERA = true;
 const FLAG_WORLD_SEED = 93845;

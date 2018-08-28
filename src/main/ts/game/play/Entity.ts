@@ -1,17 +1,28 @@
 const SURFACE_BUFFER = .1;
 
 const SIDE_SCENERY = 0;
-const SIDE_FRIEND = 1;
+const SIDE_PLAYER = 1;
 const SIDE_ENEMY = 2;
 const SIDE_NEUTRAL = 3;
+const SIDE_BUILDING = 4;
 
 interface EntityBase {
-    id: number;
-    x: number;
-    y: number;
-    z: number;
-    bounds(): Rect3;
+    type: number;
     cleanup(): void;
+    side: number;
+}
+
+interface Updatable {
+    age: number;
+    update(world: World, diff: number): any;
+}
+
+interface Bounded {
+    id: number;
+    bounds(): Rect3;
+}
+
+interface Rendered {
     lineColor: Vector3;
     fillColor: Vector3;
     lineWidth: number;
@@ -19,23 +30,24 @@ interface EntityBase {
     gridCoordinateBuffer: WebGLBuffer;
     indicesBuffer: WebGLBuffer;
     indicesCount: number;
-    side: number;
 }
 
-interface Monster extends EntityBase {
-    isMonster: 1;
+interface Monster extends EntityBase, Updatable, Bounded, Rendered {
+    type: 1;
     radius: number;
+    x: number;
+    y: number;
+    z: number;
     vx: number; 
     vy: number;
     vz: number;
     rx: number;
     ry: number; 
     rz: number;
-    age: number;
     specialMatrix?: Matrix4;
     deathAge?: number;
+    birthday?: number,
     centerPointsBuffer: WebGLBuffer;
-    update(world: World, diff: number): any;
     onCollision(entity: Entity): any;
     restitution: number;
     visible: number;
@@ -45,8 +57,8 @@ interface Monster extends EntityBase {
     previousVelocity?: Vector3;
 }
 
-interface Surface extends EntityBase {
-    isMonster: 0; 
+interface Surface extends EntityBase, Bounded, Rendered {
+    type: 0; 
     normal: Vector3;
     points: Vector2[];
     worldToPoints: Matrix4;
@@ -55,9 +67,19 @@ interface Surface extends EntityBase {
     chunkY: number;
     worldToPointsRotation: Matrix4;
     pointsToWorldRotation: Matrix4;
+    width: number;
+    height: number;
+    gridLighting: number[];
 }
 
-type Entity = Monster | Surface;
+interface Building extends EntityBase, Updatable {
+    type: -1;
+    chunkX: number;
+    chunkY: number;
+    power: number;
+}
+
+type Entity = Monster | Surface | Building;
 
 interface MonsterGenerator {
     (
@@ -173,22 +195,23 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
                 Math.max(z + minRotatedDimensions[2], z + maxRotatedDimensions[2])
             ]
         }
+        let gridLighting = [0, 0, 0, 0];
 
         let surface: Surface = {
-            isMonster: 0,
+            type: 0,
             id: surfaceId--,
             normal: normal,
             points: [[0, 0], [width, 0], [width, height], [0, height]],
             chunkX: chunkX, 
             chunkY: chunkY,
-            x: x, 
-            y: y, 
-            z: z, 
+            width: width, 
+            height: height,
             lineColor: lineColor, 
             lineWidth: 0.02/lineScale,
             fillColor: fillColor, 
             positionBuffer: floorPositionBuffer, 
             gridCoordinateBuffer: gridCoordinateBuffer,
+            gridLighting: gridLighting,
             indicesBuffer: floorIndicesBuffer,
             indicesCount: floorIndices.length,
             worldToPoints: worldToPointsMatrix, 
@@ -541,7 +564,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
         let indicesBuffer = webglCreateElementArrayBuffer(gl, indices);
         
         return {
-            isMonster: 1, 
+            type: 1, 
             id: nextId++,
             radius: radius, 
             lineColor: lineColor, 
@@ -553,7 +576,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
             restitution: 0.01,
             update: updater,
             onCollision: function(this: Monster, entity: Entity) {
-                if( entity.isMonster && entity.side > this.side ) {
+                if( entity.type && entity.side > this.side ) {
                     this.deathAge = this.age;
                 }
             },
