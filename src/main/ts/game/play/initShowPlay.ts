@@ -1,7 +1,7 @@
 ///<reference path="../../constants.ts"/>
 
 const A_VERTEX_POSITION = 'aVertexPosition_';
-const A_OFFSET_POINT = 'aOffsetPoint_';
+const A_VERTEX_OFFSET = 'aVertexOffset_';
 const A_GRID_COORDINATE = 'aGridCoordinate_';
 
 const U_MODEL_MATRIX = 'uModelMatrix_';
@@ -11,32 +11,50 @@ const U_PREVIOUS_VIEW_MATRIX = 'uPreviousViewMatrix_';
 const U_GRID_MODE = 'uGridMode_';
 const U_CYCLE_RADIANS = 'uCycleRadians_';
 const U_OFFSET_MULTIPLIER = 'uOffsetMultiplier_';
+const U_SURFACE_NORMAL = 'uSurfaceNormal_';
+const U_DIRECTED_LIGHTING_NORMAL = 'uDirectedLightingNormal_';
+const U_DIRECTED_LIGHTING_RANGE = 'uDirectedLightingRange_';
 const V_RELATIVE_POSITION = 'vRelativePosition_';
 const V_GRID_COORDINATE = 'vGridCoordinate_';
 const V_SCREEN_COORDINATE = 'vScreenCoordinate_';
+const V_NORMAL_LIGHTING = 'vNormalLighting_';
+const V_VERTEX_POSITION = 'vVertexPosition_';
 
 const C_BLUR_ITERATIONS = 7;
 
 let vertexShaderSource = `
 precision lowp float;
 attribute vec4 ${A_VERTEX_POSITION};
-attribute vec4 ${A_OFFSET_POINT};
+attribute vec4 ${A_VERTEX_OFFSET};
 attribute vec4 ${A_GRID_COORDINATE};
 uniform mat4 ${U_MODEL_MATRIX};
 uniform mat4 ${U_VIEW_MATRIX};
 uniform mat4 ${U_PREVIOUS_VIEW_MATRIX};
 uniform mat4 ${U_PROJECTION_MATRIX};
+uniform vec3 ${U_SURFACE_NORMAL};
+uniform vec4 ${U_DIRECTED_LIGHTING_NORMAL};
 uniform lowp int ${U_GRID_MODE};
 uniform float ${U_CYCLE_RADIANS};
 uniform float ${U_OFFSET_MULTIPLIER};
+varying vec3 ${V_VERTEX_POSITION};
 varying vec3 ${V_RELATIVE_POSITION};
 varying vec3 ${V_GRID_COORDINATE};
 varying vec4 ${V_SCREEN_COORDINATE};
+varying vec4 ${V_NORMAL_LIGHTING};
+
 void main() {
     vec3 adjustedVertexPosition = ${A_VERTEX_POSITION}.xyz;
+    float directedLighting;
+    vec3 vertexNormal;
     if( ${U_GRID_MODE} > 0 ) {
-        adjustedVertexPosition += ${A_VERTEX_POSITION}.w * ${A_VERTEX_POSITION}.xyz * sin(${U_CYCLE_RADIANS} + ${A_GRID_COORDINATE}.w) + ${U_OFFSET_MULTIPLIER} * ${A_OFFSET_POINT}.w * ${A_OFFSET_POINT}.xyz;
+        adjustedVertexPosition += ${A_VERTEX_OFFSET}.w * ${A_VERTEX_POSITION}.xyz * sin(${U_CYCLE_RADIANS} + ${A_GRID_COORDINATE}.w) + ${U_OFFSET_MULTIPLIER} * ${A_VERTEX_OFFSET}.xyz;
+        vertexNormal = (${U_MODEL_MATRIX} * vec4(${A_VERTEX_POSITION}.xyz/${A_VERTEX_POSITION}.w, 1.) - ${U_MODEL_MATRIX} * vec4(vec3(0.), 1.)).xyz;
+        
+    } else {
+        vertexNormal = ${U_SURFACE_NORMAL};
     }
+    directedLighting = dot(vertexNormal, ${U_DIRECTED_LIGHTING_NORMAL}.xyz);
+    vec4 relativeNormal = ${U_VIEW_MATRIX} * vec4(vertexNormal, 1.) - ${U_VIEW_MATRIX} * vec4(vec3(0.),1.);
     
     vec4 vertexPosition = ${U_MODEL_MATRIX} * vec4(adjustedVertexPosition, 1.);
     vec4 relativeVertexPosition = ${U_VIEW_MATRIX} * vertexPosition;
@@ -44,6 +62,8 @@ void main() {
     ${V_GRID_COORDINATE} = ${A_GRID_COORDINATE}.xyz;
     ${V_RELATIVE_POSITION} = relativeVertexPosition.xyz;    
     ${V_SCREEN_COORDINATE} = ${U_PROJECTION_MATRIX} * ${U_PREVIOUS_VIEW_MATRIX} * vertexPosition;
+    ${V_NORMAL_LIGHTING} = vec4(relativeNormal.xyz, (directedLighting + 1.) * ${U_DIRECTED_LIGHTING_NORMAL}.w);
+    ${V_VERTEX_POSITION} = vertexPosition.xyz;
     gl_Position = screenPosition;
 }
 `;
@@ -75,9 +95,12 @@ uniform vec2 ${U_PREVIOUS_DIMENSION};
 uniform lowp int ${U_GRID_MODE};
 uniform vec2 ${U_GRID_DIMENSION};
 uniform float ${U_GRID_LIGHTING}[4];
+uniform vec4 ${U_DIRECTED_LIGHTING_RANGE};
+varying vec3 ${V_VERTEX_POSITION};
 varying vec3 ${V_RELATIVE_POSITION};
 varying vec3 ${V_GRID_COORDINATE};
 varying vec4 ${V_SCREEN_COORDINATE};
+varying vec4 ${V_NORMAL_LIGHTING};
 
 vec4 getSampleColor(vec2 screenCoordinate, int div, inout float count) {
     vec4 previousColor = texture2D(${U_PREVIOUS}, screenCoordinate);
@@ -93,15 +116,18 @@ vec4 getSampleColor(vec2 screenCoordinate, int div, inout float count) {
 void main() {
     // TODO can shorten this for sure
 
+    
     float distanceSquared = ${V_RELATIVE_POSITION}.x*${V_RELATIVE_POSITION}.x+${V_RELATIVE_POSITION}.y*${V_RELATIVE_POSITION}.y+${V_RELATIVE_POSITION}.z*${V_RELATIVE_POSITION}.z;
     float distance = sqrt(distanceSquared);
+    vec3 relativeNormal = ${V_RELATIVE_POSITION}/distance;
     float visibleDistanceSquared = ${U_VISIBLE_DISTANCE} * ${U_VISIBLE_DISTANCE};
     float fogginess = 0.;
     if( distance < ${U_VISIBLE_DISTANCE} ) {
         fogginess = clamp((visibleDistanceSquared-distanceSquared) / visibleDistanceSquared, 0., 1.);
     }
-    
-    float lighting = clamp((${U_CAMERA_LIGHT}.x-distance) / ${U_CAMERA_LIGHT}.x, 0., 1.) * ${U_CAMERA_LIGHT}.y + ${U_AMBIENT_LIGHT};
+    float floorLighting = ${V_NORMAL_LIGHTING}.w * (1. - min((${V_VERTEX_POSITION}.z - (${V_VERTEX_POSITION}.x - ${U_DIRECTED_LIGHTING_RANGE}.x)*${U_DIRECTED_LIGHTING_RANGE}.y - ${U_DIRECTED_LIGHTING_RANGE}.z)/${U_DIRECTED_LIGHTING_RANGE}.w, 1.));
+    float pointLighting = clamp((${U_CAMERA_LIGHT}.x-distance) / ${U_CAMERA_LIGHT}.x, 0., 1.) * -dot(relativeNormal,${V_NORMAL_LIGHTING}.xyz) * ${U_CAMERA_LIGHT}.y;
+    float lighting = pointLighting + ${U_AMBIENT_LIGHT} + floorLighting*floorLighting + ${V_NORMAL_LIGHTING}.w;
     float tileness = 1.;
     vec3 fillColor;
     if( ${U_GRID_MODE} > 0 ) {
@@ -135,8 +161,8 @@ void main() {
     float count = 0.;
     vec4 previous = getSampleColor(textureCoordinate, 0, count);
     for( int i=1; i<${C_BLUR_ITERATIONS}; ++i ) {
-        float f = float(i*i+2)/2.;
-        //float f = float(i);
+        //float f = float(i*i+2)/2.;
+        float f = float(i);
         previous += getSampleColor(textureCoordinate + vec2(${U_PREVIOUS_DIMENSION}.x, 0.) * f, i, count);
         previous += getSampleColor(textureCoordinate - vec2(${U_PREVIOUS_DIMENSION}.x, 0.) * f, i, count);
         previous += getSampleColor(textureCoordinate + vec2(0., ${U_PREVIOUS_DIMENSION}.y) * f, i, count);
@@ -255,7 +281,7 @@ function initShowPlay(
     // get uniforms and attributes
     let aVertexPosition = gl.getAttribLocation(shaderProgram, A_VERTEX_POSITION);
     let aGridCoordinate = gl.getAttribLocation(shaderProgram, A_GRID_COORDINATE);
-    let aOffsetPoint = gl.getAttribLocation(shaderProgram, A_OFFSET_POINT);
+    let aVertexOffset = gl.getAttribLocation(shaderProgram, A_VERTEX_OFFSET);
 
     let uProjectionMatrix = gl.getUniformLocation(shaderProgram, U_PROJECTION_MATRIX);
     let uModelMatrix = gl.getUniformLocation(shaderProgram, U_MODEL_MATRIX);
@@ -274,8 +300,12 @@ function initShowPlay(
     let uGridLighting = gl.getUniformLocation(shaderProgram, U_GRID_LIGHTING);
     let uCycleRadians = gl.getUniformLocation(shaderProgram, U_CYCLE_RADIANS);
     let uOffsetMultiplier = gl.getUniformLocation(shaderProgram, U_OFFSET_MULTIPLIER);
+    let uDirectedLightingNormal = gl.getUniformLocation(shaderProgram, U_DIRECTED_LIGHTING_NORMAL);
+    let uDirectedLightingRange = gl.getUniformLocation(shaderProgram, U_DIRECTED_LIGHTING_RANGE);
+    let uSurfaceNormal = gl.getUniformLocation(shaderProgram, U_SURFACE_NORMAL);
 
     gl.uniform1f(uVisibleDistance, CONST_VISIBLE_DISTANCE);
+    gl.uniform4fv(uDirectedLightingNormal, CONST_DIRECTIONAL_LIGHT);
     
     return function() {
         let animationFrameHandle: number;
@@ -495,13 +525,14 @@ function initShowPlay(
             gl.uniformMatrix4fv(uProjectionMatrix, false, projectionMatrix);
             gl.uniformMatrix4fv(uViewMatrix, false, viewMatrix);
             gl.uniformMatrix4fv(uPreviousViewMatrix, false, previousViewMatrix);
-            gl.uniform1f(uAmbientLight, .1);
+            gl.uniform1f(uAmbientLight, CONST_AMBIENT_LIGHT_INTENSITY);
             
+
             if( FLAG_MUZZLE_FLASH ) {
                 let shotLightBonus = Math.max(0, lastShot + shotInterval/2 - world.age)/(shotInterval/2);
-                gl.uniform2f(uCameraLight, 12 + shotLightBonus, .5 + shotLightBonus*.2);    
+                gl.uniform2f(uCameraLight, CONST_CAMERA_LIGHT_DISTANCE + shotLightBonus, CONST_CAMERA_LIGHT_INTENSITY + shotLightBonus*.2);    
             } else {
-                gl.uniform2f(uCameraLight, 12, .6);    
+                gl.uniform2f(uCameraLight, CONST_CAMERA_LIGHT_DISTANCE, CONST_CAMERA_LIGHT_INTENSITY);    
             }
     
             // draw all the entities
@@ -521,20 +552,31 @@ function initShowPlay(
             
                         let lineColor = rendered.lineColor;
                         let fillColor = rendered.fillColor;
+                        let directedLightingRange: Vector4;
 
                         gl.uniform1f(uLineWidth, rendered.lineWidth);
                         gl.uniform1i(uGridMode, entity.type);
 
-                        let offsetPointsBuffer: WebGLBuffer;
+                        let offsetBuffer: WebGLBuffer;
                         if( entity.type ) {
-                            let monster = entity as Monster;
-                            offsetPointsBuffer = monster.centerPointsBuffer;
+                            let monster = entity as Monster; 
+                            offsetBuffer = monster.offsetBuffer;
                             let translationMatrix = matrix4Translate(monster.x, monster.y, monster.z);
                             let rotationMatrixX = matrix4Rotate(0, 1, 0, -monster.rx);
                             let rotationMatrixY = matrix4Rotate(1, 0, 0, -monster.ry);
                             let rotationMatrixZ = matrix4Rotate(0, 0, 1, -monster.rz);
-            
+
                             let matrixStack = [translationMatrix, rotationMatrixZ, rotationMatrixY, rotationMatrixX, monster.specialMatrix];
+
+                            // attempt to find the surface this entity is above
+                            directedLightingRange = [0, 0, 0, 0];
+                            let surfaces = world.getEntitiesAt(monster.x/CONST_CHUNK_WIDTH | 0, monster.y/CONST_CHUNK_HEIGHT | 0);
+                            if( surfaces && surfaces.length ) {
+                                let surface = surfaces[0] as Surface;
+                                if( surface ) {
+                                    directedLightingRange = surface.directedLightingRange;
+                                }
+                            }
             
                             let cycle = entity.age / monster.cycleLength;
                             let offsetMultiplier = 0;
@@ -545,7 +587,7 @@ function initShowPlay(
                                 let b = (entity.age - monster.deathAge)/deathAnimationTime;
                                 let bsq = b * b;
                                 let scale = 1 - bsq*.99;
-                                offsetMultiplier = bsq * 3 / scale; 
+                                offsetMultiplier = bsq * 3 * monster.radius / scale; 
                                 // explode away from the camera
                                 //matrixStack.splice(1, 0, matrix4Scale(1 - b * sinZ, 1 - b * cosZ, 1 - b));
                                 matrixStack.splice(1, 0, matrix4Scale(scale, scale, scale));
@@ -560,20 +602,22 @@ function initShowPlay(
                             let modelMatrix = matrix4MultiplyStack(matrixStack);
                             gl.uniformMatrix4fv(uModelMatrix, false, modelMatrix);
             
-            
                         } else {
                             let surface = entity as Surface;
                             // doesn't get used, but put something in to prevent errors from disposed buffers
-                            offsetPointsBuffer = surface.gridCoordinateBuffer;
+                            offsetBuffer = surface.gridCoordinateBuffer;
         
+                            gl.uniform3fv(uSurfaceNormal, surface.normal);
                             gl.uniformMatrix4fv(uModelMatrix, false, surface.pointsToWorld);
                             gl.uniform2f(uGridDimension, surface.width, surface.height);
                             gl.uniform1fv(uGridLighting, surface.gridLighting);
+                            directedLightingRange = surface.directedLightingRange;
                         }
-                        webglBindAttributeBuffer(gl, offsetPointsBuffer, aOffsetPoint, 4); 
+                        webglBindAttributeBuffer(gl, offsetBuffer, aVertexOffset, 4); 
             
                         gl.uniform3fv(uLineColor, lineColor);
                         gl.uniform3fv(uFillColor, fillColor);
+                        gl.uniform4fv(uDirectedLightingRange, directedLightingRange);
 
                         gl.drawElements(gl.TRIANGLES, rendered.indicesCount, FLAG_GL_16_BIT_INDEXES?gl.UNSIGNED_SHORT:gl.UNSIGNED_BYTE, 0);
                     }

@@ -22,7 +22,7 @@ function flatChunkGeneratorFactory(
             floorHeight = 0;
         } else {
             let xOffset = Math.floor((tileX + 3) / 4) * 3;
-            floorHeight = Math.floor((tileX + Math.abs(numberPositiveMod(tileY + xOffset, 6) - 2)) / 4);
+            floorHeight = Math.floor((tileX + Math.abs(numberPositiveMod(tileY + xOffset, 6) - 2)) / 4); 
         }
         return floorHeight * CONST_WALL_DEPTH;
     }
@@ -30,7 +30,7 @@ function flatChunkGeneratorFactory(
     return function(tileX: number, tileY: number): Entity[] {
 
         let x = tileX * CONST_CHUNK_WIDTH;
-        let y = tileY * CONST_CHUNK_HEIGHT;
+        let y = tileY * CONST_CHUNK_HEIGHT; 
 
 
         let z = getFloorHeight(tileX, tileY);
@@ -42,26 +42,32 @@ function flatChunkGeneratorFactory(
         let rng = rngFactory(tileX*111 + tileY * 37);
         let floor: Surface;
         let stairs = eastZ > z && northZ > z && southZ > z;
+        
+        let directedLightingRange: Vector4;
         if( stairs ) {
             let dz = eastZ - z;
             let width = Math.sqrt(CONST_CHUNK_WIDTH * CONST_CHUNK_WIDTH + dz * dz);
             let angle = Math.atan2(dz, CONST_CHUNK_WIDTH); 
+            directedLightingRange = [x, dz/CONST_CHUNK_WIDTH, z + CONST_DIRECTIONAL_LIGHT_EXTRA_Z, CONST_DIRECTIONAL_LIGHT_FADE_OUT];
             floor = surfaceGenerator(
                 x, y, z, 
                 width, CONST_CHUNK_HEIGHT, 
                 tileX, tileY, 
                 0, angle, 
                 floorLineColor, 
-                floorFillColor
+                floorFillColor, 
+                directedLightingRange
             );    
         } else {
+            directedLightingRange = [x, 0, z + CONST_DIRECTIONAL_LIGHT_EXTRA_Z, CONST_DIRECTIONAL_LIGHT_FADE_OUT];
             floor = surfaceGenerator(
                 x, y, z, 
                 CONST_CHUNK_WIDTH, CONST_CHUNK_HEIGHT, 
                 tileX, tileY, 
                 0, 0, 
                 floorLineColor, 
-                floorFillColor
+                floorFillColor, 
+                directedLightingRange
             );    
         }
 
@@ -73,7 +79,8 @@ function flatChunkGeneratorFactory(
                 tileX, tileY, 
                 0, Math.PI/2,  
                 wallLineColor, 
-                wallFillColor
+                wallFillColor, 
+                directedLightingRange
             );
             entities.push(wall);
         }
@@ -84,7 +91,8 @@ function flatChunkGeneratorFactory(
                 tileX, tileY, 
                 Math.PI/2, 0,  
                 wallLineColor, 
-                wallFillColor
+                wallFillColor, 
+                directedLightingRange
             );
             entities.push(wall);
         }
@@ -96,7 +104,8 @@ function flatChunkGeneratorFactory(
                 tileX, tileY, 
                 -Math.PI/2, 0,
                 wallLineColor, 
-                wallFillColor
+                wallFillColor, 
+                directedLightingRange
             );
             entities.push(wall);
         }
@@ -137,7 +146,9 @@ function flatChunkGeneratorFactory(
                     tileX, tileY, 
                     Math.PI/2, 0, 
                     badLineColor, 
-                    badFillColor                
+                    badFillColor, 
+                    directedLightingRange
+
                 );
                 let buildingWallEast = surfaceGenerator( 
                     buildingX, buildingY + buildingHeight, buildingZ + buildingDepth, 
@@ -145,7 +156,8 @@ function flatChunkGeneratorFactory(
                     tileX, tileY, 
                     -Math.PI/2, 0, 
                     badLineColor, 
-                    badFillColor                
+                    badFillColor,       
+                    directedLightingRange
                 );
                 let buildingWallSouth = surfaceGenerator(
                     buildingX, buildingY, buildingZ, 
@@ -153,7 +165,8 @@ function flatChunkGeneratorFactory(
                     tileX, tileY, 
                     0, Math.PI/2, 
                     badLineColor, 
-                    badFillColor
+                    badFillColor, 
+                    directedLightingRange
                 );
                 let buildingWallNorth = surfaceGenerator(
                     buildingX + buildingWidth, buildingY, buildingZ + buildingDepth, 
@@ -161,7 +174,8 @@ function flatChunkGeneratorFactory(
                     tileX, tileY, 
                     0, -Math.PI/2, 
                     badLineColor, 
-                    badFillColor
+                    badFillColor, 
+                    directedLightingRange
                 );
                 let buildingRoof = surfaceGenerator(
                     buildingX, buildingY, buildingZ + buildingDepth, 
@@ -169,7 +183,8 @@ function flatChunkGeneratorFactory(
                     tileX, tileY, 
                     0, 0, 
                     badLineColor, 
-                    badFillColor
+                    badFillColor, 
+                    directedLightingRange
                 );
                 
                 walls.push(buildingWallEast, buildingWallWest, buildingWallSouth, buildingWallNorth, buildingRoof);

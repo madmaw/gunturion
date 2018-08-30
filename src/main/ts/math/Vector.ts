@@ -20,6 +20,13 @@ function vector3CrossProduct(v1: Vector3, v2: Vector3): Vector3 {
     ];
 }
 
+function vector3GetNormal(x1: number, y1: number, z1: number, x2: number, y2: number, z2: number) {
+    return vector3CrossProduct(
+        vector3Normalize([x1, y1, z1]), 
+        vector3Normalize([x2, y2, z2])
+    );
+}
+
 function vector3DotProduct(v1: Vector3, v2: Vector3): number {
     return v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2];
 }

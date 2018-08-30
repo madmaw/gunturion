@@ -533,7 +533,7 @@ class World {
         return overlap;
     }
 
-    private getEntitiesAt(chunkX: number, chunkY: number): (Monster | Surface)[] {
+    public getEntitiesAt(chunkX: number, chunkY: number): (Monster | Surface)[] {
         let result: (Monster | Surface)[];
         if( rect2Contains(this.activeTileArea, chunkX, chunkY) ) {
             let xm = numberPositiveMod(chunkX, this.activeChunksWidth);

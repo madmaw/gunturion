@@ -47,7 +47,7 @@ interface Monster extends EntityBase, Updatable, Bounded, Rendered {
     specialMatrix?: Matrix4;
     deathAge?: number;
     birthday?: number,
-    centerPointsBuffer: WebGLBuffer;
+    offsetBuffer: WebGLBuffer;
     onCollision(entity: Entity): any;
     restitution: number;
     visible: number;
@@ -70,6 +70,7 @@ interface Surface extends EntityBase, Bounded, Rendered {
     width: number;
     height: number;
     gridLighting: number[];
+    directedLightingRange: Vector4;
 }
 
 interface Building extends EntityBase, Updatable {
@@ -103,9 +104,11 @@ interface SurfaceGenerator {
         rotateX: number, 
         rotateY: number, 
         gridColor: Vector3, 
-        fillColor: Vector3
+        fillColor: Vector3, 
+        directedLightingRange: Vector4
     ): Surface;
 }
+
 
 function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
     let nextId = 0;
@@ -121,7 +124,8 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
         rotateX: number, 
         rotateY: number, 
         lineColor: Vector3, 
-        fillColor: Vector3
+        fillColor: Vector3, 
+        directedLightingRange: Vector4
     ) {
         let surfaceId = --nextId;
 
@@ -218,6 +222,7 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
             pointsToWorld: pointsToWorldMatrix,
             worldToPointsRotation: worldToPointsRotationMatrix, 
             pointsToWorldRotation: pointsToWorldRotationMatrix,
+            directedLightingRange: directedLightingRange,
             side: SIDE_SCENERY,
             cleanup: function() {
                 gl.deleteBuffer(gridCoordinateBuffer);
@@ -236,9 +241,9 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
     let nextId = 0;
 
     let fillColors = [
-        [.8, .3, .3], 
+        [.4, .1, .1], 
         [.2, .5, .2], 
-        [.3, .3, .8], 
+        [.1, .1, .4], 
         [.1, .4, .4]  
     ]
 
@@ -323,7 +328,13 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
         let positions: number[] = [];
         let indices: number[] = [];
         let barrycentricCoordinates: number[] = [];
-        let centerPoints: number[] = [];
+        let offsets: number[] = [];
+        function addPoint(x: number, y: number, z: number, spikiness: number, cx: number, cy: number, cz: number) {
+            let length = vector3Length([x, y, z]);
+            offsets.push(cx, cy, cz, spikiness);
+            positions.push(x, y, z, length);
+        }
+
 
         let ringPointCounts: number[] = [];
         let ringAngles: number[] = [];
@@ -397,13 +408,45 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
                         let nextRingNextRx = Math.cos(nextRingNextAngleZ)*nextRingRadius;
                         let nextRingNextRy = Math.sin(nextRingNextAngleZ) * nextRingRadius;
 
-                        let cx1 = (rx + nextRx + nextRingNextRx) / 3;
-                        let cy1 = (ry + nextRy + nextRingNextRy) / 3;
-                        let cz1 = (ringZ * 2 + nextRingZ) / 3;
 
-                        let cx2 = (nextRx + nextRingRx + nextRingNextRx) / 3;
-                        let cy2 = (nextRy + nextRingRy + nextRingNextRy) / 3;
-                        let cz2 = (ringZ + nextRingZ * 2) / 3;
+                        let r1 = Math.random()+.5;
+                        let r2 = Math.random()+.5;
+
+                        // let normal1 = vector3GetNormal(
+                        //     rx - nextRingRx, ry - nextRingRy, ringZ - nextRingZ, 
+                        //     rx - nextRx, ry - nextRy, 0
+                        // );
+                        let cx1 = (rx + nextRx + nextRingNextRx) * r1 / 3;
+                        let cy1 = (ry + nextRy + nextRingNextRy) * r1 / 3;
+                        let cz1 = (ringZ * 2 + nextRingZ) * r1 / 3;
+                        // if( vector3DotProduct(normal1, [cx1, cy1, cz1]) < 0 ) {
+                        //     throw 'incorrect normal';
+                        // }
+
+                        // let normal2 = vector3GetNormal(
+                        //     nextRingNextRx - nextRingRx, nextRingNextRy - nextRingRy, 0, 
+                        //     nextRx - nextRingRx, nextRy - nextRingRy, ringZ - nextRingZ
+                        // );
+                        let cx2 = (nextRx + nextRingRx + nextRingNextRx) * r2 / 3;
+                        let cy2 = (nextRy + nextRingRy + nextRingNextRy) * r2 / 3;
+                        let cz2 = (ringZ + nextRingZ * 2) * r2 / 3;
+                        // if( vector3DotProduct(normal2, [cx2, cy2, cz2]) < 0 ) {
+                        //     throw 'incorrect normal';
+                        // }
+
+                        // normals.push.apply(normals, normal1));
+                        // normals.push.apply(normals, normal1);
+                        // normals.push.apply(normals, normal1);
+                        // normals.push.apply(normals, normal2);
+                        // normals.push.apply(normals, normal2);
+                        // normals.push.apply(normals, normal2);
+
+                        addPoint(nextRx, nextRy, ringZ, nextSpikiness, cx1, cy1, cz1);
+                        addPoint(rx, ry, ringZ, spikiness, cx1, cy1, cz1);
+                        addPoint(nextRingRx, nextRingRy, nextRingZ, nextRingSpikiness, cx1, cy1, cz1);
+                        addPoint(nextRx, nextRy, ringZ, nextSpikiness, cx2, cy2, cz2);
+                        addPoint(nextRingRx, nextRingRy, nextRingZ, nextRingSpikiness, cx2, cy2, cz2);
+                        addPoint(nextRingNextRx, nextRingNextRy, nextRingZ, nextRingNextSpikiness, cx2, cy2, cz2);
 
                         indices.push(
                             // face 1
@@ -412,27 +455,25 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
                             l++, l++, l++
 
                         );
-                        positions.push(
-                            // face 1
-                            nextRx, nextRy, ringZ, nextSpikiness,  
-                            rx, ry, ringZ, spikiness,  
-                            nextRingRx, nextRingRy, nextRingZ, nextRingSpikiness,  
-                            // face 2
-                            nextRx, nextRy, ringZ, nextSpikiness,  
-                            nextRingRx, nextRingRy, nextRingZ, nextRingSpikiness,  
-                            nextRingNextRx, nextRingNextRy, nextRingZ, nextRingNextSpikiness,  
-                        );
-                        let r1 = Math.random();
-                        let r2 = Math.random();
-                        centerPoints.push(
-                            cx1, cy1, cz1, r1,
-                            cx1, cy1, cz1, r1, 
-                            cx1, cy1, cz1, r1, 
+                        // positions.push(
+                        //     // face 1
+                        //     nextRx, nextRy, ringZ, nextSpikiness,  
+                        //     rx, ry, ringZ, spikiness,  
+                        //     nextRingRx, nextRingRy, nextRingZ, nextRingSpikiness,  
+                        //     // face 2
+                        //     nextRx, nextRy, ringZ, nextSpikiness,  
+                        //     nextRingRx, nextRingRy, nextRingZ, nextRingSpikiness,  
+                        //     nextRingNextRx, nextRingNextRy, nextRingZ, nextRingNextSpikiness,  
+                        // );
+                        // centerPoints.push(
+                        //     cx1, cy1, cz1, r1,
+                        //     cx1, cy1, cz1, r1, 
+                        //     cx1, cy1, cz1, r1, 
 
-                            cx2, cy2, cz2, r2, 
-                            cx2, cy2, cz2, r2, 
-                            cx2, cy2, cz2, r2, 
-                        );
+                        //     cx2, cy2, cz2, r2, 
+                        //     cx2, cy2, cz2, r2, 
+                        //     cx2, cy2, cz2, r2, 
+                        // );
                         if( equalRingOffset ) {
                             barrycentricCoordinates.push(
                                 // face 1
@@ -509,28 +550,42 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
                     indices.push( 
                         l++, l++, l++
                     );
-                    let cx = (rx + nextRx)/3;
-                    let cy = (ry + nextRy)/3;
-                    let cz = (ringZ * 2 + tip)/3;
-                    let r = Math.random();
-                    centerPoints.push(
-                        cx, cy, cz, r, 
-                        cx, cy, cz, r, 
-                        cx, cy, cz, r, 
-                    );
+                    let r = Math.random()+.5;
+                    let cx = (rx + nextRx) * r/3;
+                    let cy = (ry + nextRy) * r/3;
+                    let cz = (ringZ * 2 + tip) * r/3;
+                    // let normal: Vector3;
+                    // centerPoints.push(
+                    //     cx, cy, cz, r, 
+                    //     cx, cy, cz, r, 
+                    //     cx, cy, cz, r, 
+                    // );
+
                     if( tip > 0 ) {
-                        positions.push(
-                            rx, ry, ringZ, spikiness,
-                            nextRx, nextRy, ringZ, nextSpikiness,
-                            0, 0, tip, tipSpikiness
-                        );    
+                        addPoint(rx, ry, ringZ, spikiness, cx, cy, cz);
+                        addPoint(nextRx, nextRy, ringZ, nextSpikiness, cx, cy, cz);
+
+                        // positions.push(
+                        //     rx, ry, ringZ, spikiness,
+                        //     nextRx, nextRy, ringZ, nextSpikiness,
+                        //     0, 0, tip, tipSpikiness
+                        // );    
                     } else {
-                        positions.push(
-                            nextRx, nextRy, ringZ, nextSpikiness,
-                            rx, ry, ringZ, spikiness, 
-                            0, 0, tip, tipSpikiness
-                        );    
+                        addPoint(nextRx, nextRy, ringZ, nextSpikiness, cx, cy, cz);
+                        addPoint(rx, ry, ringZ, spikiness, cx, cy, cz);
+                        // normal = vector3GetNormal(nextRx, nextRy,  ringZ - tip, rx, ry, ringZ - tip);
+                        // positions.push(
+                        //     nextRx, nextRy, ringZ, nextSpikiness,
+                        //     rx, ry, ringZ, spikiness, 
+                        //     0, 0, tip, tipSpikiness
+                        // );    
                     }
+                    addPoint(0, 0, tip, tipSpikiness, cx, cy, cz);
+                    // normal.push(r);
+                    // normals.push.apply(normals, normal);
+                    // normals.push.apply(normals, normal);
+                    // normals.push.apply(normals, normal);
+
                     if( pointyTip ) {
                         if( equalRingOffset ) {
                             barrycentricCoordinates.push(
@@ -560,8 +615,12 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
         
         let barrycentricCoordinatesBuffer = webglCreateArrayBuffer(gl, barrycentricCoordinates);
         let positionBuffer = webglCreateArrayBuffer(gl, positions);
-        let centerPointsBuffer = webglCreateArrayBuffer(gl, centerPoints);
+        let offsetBuffer = webglCreateArrayBuffer(gl, offsets);
         let indicesBuffer = webglCreateElementArrayBuffer(gl, indices);
+
+        if( offsets.length != positions.length ) {
+            throw 'not equal';
+        }
         
         return {
             type: 1, 
@@ -584,7 +643,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
                 if( FLAG_CLEAN_UP_ENTITY ) {
                     gl.deleteBuffer(indicesBuffer);
                     gl.deleteBuffer(positionBuffer);
-                    gl.deleteBuffer(centerPointsBuffer);
+                    gl.deleteBuffer(offsetBuffer);
                     gl.deleteBuffer(barrycentricCoordinatesBuffer);
                 }
             },
@@ -602,7 +661,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
             indicesCount: indices.length, 
             positionBuffer: positionBuffer, 
             gravityMultiplier: 1,
-            centerPointsBuffer: centerPointsBuffer,
+            offsetBuffer: offsetBuffer,
             bounds: bounds, 
             cycleLength: cycleLength
         }
