@@ -6,6 +6,11 @@ const SIDE_ENEMY = 2;
 const SIDE_NEUTRAL = 3;
 const SIDE_BUILDING = 4;
 
+const MONSTER_BEHAVIOUR_FLAG_LATERAL_MOVEMENT = 1;
+const MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT = 2;
+const MONSTER_BEHAVIOUR_FLAG_ROTATION_Z = 4;
+const MONSTER_BEHAVIOUR_FLAG_ROTATION_X = 8;
+
 interface EntityBase {
     type: number;
     cleanup(): void;
@@ -48,13 +53,23 @@ interface Monster extends EntityBase, Updatable, Bounded, Rendered {
     deathAge?: number;
     birthday?: number,
     offsetBuffer: WebGLBuffer;
-    onCollision(entity: Entity): any;
+    onCollision(world: World, entity: Entity): void;
+    die(world: World, deathSource?: Entity): void,
     restitution: number;
     visible: number;
     cycleLength: number;
     gravityMultiplier: number;
     previousPosition?: Vector3;
     previousVelocity?: Vector3;
+    seed: number;
+}
+
+interface MonsterBehaviour {
+    (world: World, diff: number, takenFlags: number): any;
+}
+
+interface MonsterDeathBehaviour {
+    (world: World, deathSource: Entity): void;
 }
 
 interface Surface extends EntityBase, Bounded, Rendered {
@@ -88,7 +103,8 @@ interface MonsterGenerator {
         x: number, 
         y: number, 
         z: number, 
-        radius: number
+        radius?: number, 
+        maxAge?: number
     ): Monster;
 }
 
@@ -236,23 +252,10 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
     }    
 }
 
-function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
+function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNumberGeneratorFactory): MonsterGenerator {
 
     let nextId = 0;
 
-    let fillColors = [
-        [.4, .1, .1], 
-        [.2, .5, .2], 
-        [.1, .1, .4], 
-        [.1, .4, .4]  
-    ]
-
-    let lineColors = [
-        [1, .2, .2], 
-        [.2, 1, .2], 
-        [.2, .2, 1], 
-        [0, 1, 1]
-    ]
 
     let bounds = function(this: Monster): Rect3 {
         return {
@@ -260,13 +263,6 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
             max: [this.x + this.radius, this.y + this.radius, this.z + this.radius]
         }
     };
-
-    function shift(bits: number, out: number[]): number {
-        let mask = Math.pow(2, bits) - 1;
-        let b = out[0] & mask;
-        out[0] >>= bits;
-        return b;
-    }   
 
     function fib(i: number) {
         let prev = 1;
@@ -280,49 +276,102 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
         return f;
     }
 
-    return function(
+    let monsterGenerator = function(
         seed: number,
         x: number, 
         y: number, 
         z: number, 
-        radius: number
+        radius?: number, 
+        maxAge?: number
     ): Monster {
 
-        let s = [seed];
-        let ringsBase = shift(3, s);
+        //seed = 262212576; (inert)
+        //seed = -566750790
+        let s = seed;
+        let rng = rngFactory(seed);
+
+        function shift(bits: number): number {
+            let mask = Math.pow(2, bits) - 1;
+            let b = s & mask;
+            s>>=bits;
+            return b;
+        }   
+    
+    
+        let ringsBase = shift(3);
         let rings = fib(ringsBase)%11; // 1, 2, 3, 5, 8, 13(2), 21(10), 34(1)
-        let minPointCount = fib(shift(2, s)+1) + Math.max(1, ringsBase-1); // 2, 3, 5, 8 + rings
-        let horizontalScale = (shift(1, s)+minPointCount)/(minPointCount+1);
+        let minPointCount = fib(shift(2)+1) + Math.max(1, ringsBase-1); // 2, 3, 5, 8 + rings
+        let horizontalScale = (shift(1)+minPointCount)/(minPointCount+1);
         // TODO we don't have code for the other way 
-        let pointExponentIncrease = shift(2, s)/3;
+        let pointExponentIncrease = shift(2)/3;
         pointExponentIncrease = 0;
-        let equalRingOffset = shift(1, s);
+        let equalRingOffset = shift(1);
         //equalRingOffset = 1;
-        let allowPointyTip = shift(1, s);
-        let cycleLength = (shift(5, s)+32) * 66;  
-        let maxSpikiness = (shift(2, s))/(14 - rings);
+        let allowPointyTip = shift(1);
+        let cycleLength = (shift(5)+32) * 66;  
+        let maxSpikiness = (shift(2)+1)/(14 - rings);
         
-        let cycleBase = (shift(4, s)) * Math.PI * 2/minPointCount;
+        let cycleBase = (shift(4)) * Math.PI * 2/minPointCount;
 
         let patternBits = 2;
-        let pattern = shift(patternBits, s);        
+        let pattern = shift(patternBits) | shift(patternBits);        
 
-        // reset
-        s = [seed];
+        
+        let colorPattern = shift(3);
+        if( !colorPattern ) {
+            colorPattern |= 1 << rng(3);
+        } else if( colorPattern > 5 ) {
+            // we own yellow and we don't want white
+            colorPattern &= ~(1 << (rng(colorPattern-5)+1));
+        } 
+        let high: number;
+        let low: number;
+        let highVariance = .1;
+        let lowVariance = .1;
+        if( colorPattern == 1 ) {
+            // blues are too dark
+            // only one
+            high = 1;
+            low = .3;
+            highVariance = 0;
+            lowVariance = .2;
+        } else if( colorPattern % 2 ) {
+            // two lit
+            high = .7;
+            low = .2;
+        } else {
+            // only one
+            high = .9;
+            low = .4;
+        }
+        let fillColor = [];
+        let lineColor = [];
+        let i=3;
+        while( i-- ) {
+            let colorPatternBit = colorPattern & 1;
+            colorPattern >>= 1;
+            if( colorPatternBit) {
+                fillColor.unshift(low + rng()*lowVariance);
+                lineColor.unshift(high + rng()*lowVariance);
+            } else {
+                fillColor.unshift(0);
+                lineColor.unshift(low + rng()*lowVariance);
+            }
+        }
 
-        let colorIndex = shift(2, s);
-        let fillColor = fillColors[colorIndex];
-        let lineColor = lineColors[colorIndex];
         let lineWidth = 2;
 
-        let rx = shift(1, s) * Math.PI/2;
-        let ry = shift(1, s) * Math.PI/2;        
-
-        let updater = function(this: Monster, world: World, diff: number) {
-            this.rz = this.age / 5000;
-            //this.rx = -this.age / 10000;
-            //this.y -= this.age / 1000000;
+        let ry = shift(1) * Math.PI/2;     
+        
+        if( !radius ) {
+            radius = Math.sqrt((shift(4) + 1)/2) * CONST_BASE_RADIUS;
         }
+
+        // reset
+        s = seed;
+
+        let restitution = shift(2)/4;
+        let gravityMultiplier = Math.min(1, shift(4)/3);
 
         // generate
         let positions: number[] = [];
@@ -366,6 +415,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
             angleY += Math.PI/ringDiv;
         }
         let ringOffset = 0;
+        
         for( let ring=0; ring<rings; ring++ ) {
             let ringPointCount = ringPointCounts[ring];
             let ringAngleY = ringAngles[ring];
@@ -618,26 +668,318 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
         let offsetBuffer = webglCreateArrayBuffer(gl, offsets);
         let indicesBuffer = webglCreateElementArrayBuffer(gl, indices);
 
-        if( offsets.length != positions.length ) {
+        if( FLAG_CHECK_FOR_BAD_BUFFERS && offsets.length != positions.length ) {
             throw 'not equal';
         }
         
-        return {
+        let behaviours: MonsterBehaviour[] = [];
+        let deathBehaviours: MonsterDeathBehaviour[] = [];
+        
+        let lateralMover: (targetX: number, targetY: number, maxSpeed: number, diff: number) => void;
+        let lateralMovementFlags: number = MONSTER_BEHAVIOUR_FLAG_LATERAL_MOVEMENT;
+
+        if( false && shift(1) ) {
+            // move immedately toward target at max speed
+            lateralMover = function(targetX: number, targetY: number, speed: number) {
+                let dx = targetX - monster.x;
+                let dy = targetY - monster.y;
+                let d = Math.sqrt(dx*dx+dy*dy);
+                if( d ) {
+                    monster.vx = dx/d * speed;
+                    monster.vy = dy/d * speed;    
+                }
+            };
+        } else {
+            // accelerate toward target
+            let acceleration = (shift(5)+1)/99999;
+            lateralMover = function(targetX: number, targetY: number, maxSpeed: number, diff: number) {
+                let dx = targetX - monster.x;
+                let dy = targetY - monster.y;
+                let d = Math.sqrt(dx*dx+dy*dy);
+                if( d ) {
+                    let vx = monster.vx + dx/d * acceleration * diff;
+                    let vy = monster.vy + dy/d * acceleration * diff;
+                    let v = Math.sqrt(vx*vx+vy*vy);
+                    if( v > maxSpeed ) {
+                        vx *= maxSpeed/v;
+                        vy *= maxSpeed/v;
+                    }
+                    monster.vx = vx;
+                    monster.vy = vy;
+                }
+            }
+        } 
+        // else car-like movement (turns for angle)
+
+        // seek player
+        let seekCount = shift(2);
+        while( seekCount-- ) {
+            let speed = (shift(4)+1-Math.random()*.1)/2999;
+            behaviours.push(
+                function(world: World, diff: number, takenFlags: number) {
+                    if( !(takenFlags & lateralMovementFlags) ) {
+                        let enemy = world.getNearestEnemy(monster);
+                        if( enemy ) {
+                            lateralMover(enemy.x, enemy.y, speed, diff);
+                            return lateralMovementFlags;
+
+                        }
+                    }
+                }
+            )            
+        }
+        // dodge bullets
+        if( shift(1) ) {
+
+        }
+        // follow sibling
+        if( shift(1) ) {
+
+        }
+
+        // die and spawn something else
+        if( shift(4) == 1 ) {
+            let spawnSeed = seed & 0xFFFF;
+            let quantity = (shift(1)+1) * radius | 0;
+            // always do it when we die
+            deathBehaviours.push(function(world: World, source: Entity) {
+                let q = quantity;
+                while( q-- && source ) {
+                    let angle = q * Math.PI * 2 / quantity;
+                    let child = monsterGenerator(
+                        spawnSeed, 
+                        monster.x + Math.cos(angle) * CONST_SMALL_NUMBER, monster.y + Math.sin(angle) * CONST_SMALL_NUMBER, monster.z, 
+                        radius*.7
+                    );
+                    world.addEntity(child);    
+                }
+            });
+        }
+
+        // move aimlessly
+        if( shift(1) ) {
+            let speed = (shift(4)+1-Math.random()*.1)/2999;
+            behaviours.push(function(world: World, diff: number, takenFlags: number) {
+                if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_LATERAL_MOVEMENT ) ) {
+                    if( monster.vx<CONST_SMALL_NUMBER && monster.vy<CONST_SMALL_NUMBER ) {
+                        monster.vx = Math.random() - .5;
+                        monster.vy = Math.random() - .5;
+                    }
+                    lateralMover(monster.x + monster.vx * 999, monster.y + monster.vy * 999, speed, diff);
+                    return lateralMovementFlags;
+                }
+            });
+        }
+        // attempt to circle player
+        if( shift(1) ) {
+
+        }
+        // dive bomb
+        if( shift(1) ) {
+
+        }
+        // fly toward player height
+        if( shift(1) ) {
+            
+        }
+        // jump
+        if( !shift(3) ) {
+            let impulse = (shift(4)+1)/999;
+            behaviours.push(function(world: World, diff: number, takenFlags: number) {
+                if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT) ) {
+                    // have we hit a floor?
+                    for( let entity of recentCollisions ) {
+                        if( !entity.type ) {
+                            let surface = entity as Surface;
+                            if( surface.normal[2] > CONST_SMALL_NUMBER ) {
+                                monster.vz = impulse * surface.normal[2];
+                                return MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT
+                            }
+                        }
+                    }
+                }
+            })
+        }
+        if( behaviours.length ) {
+            let i = behaviours.length;
+            while( i-- ) {
+                let behaviour = behaviours.splice(rng(behaviours.length), 1)[0];
+                behaviours.push(behaviour);
+            }    
+
+            // die
+            if( shift(4) == 1 ) {
+                // push to front, will always (probably) be a dependant behavior
+                behaviours.unshift(function(world: World) {
+                    monster.die(world, monster);
+                });
+            }
+  
+            
+            // be lazy 
+            if( shift(2) == 1 ) {
+                // push to front, will always (probably) be a dependant behavior
+                let deceleration = (shift(2)+1)/5;
+                behaviours.unshift(function(world: World, diff: number, takenFlags: number) {
+                    if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_LATERAL_MOVEMENT ) ) {
+                        // slow down to 0
+                        let fraction = Math.pow(deceleration, diff/999);
+                        monster.vx *= fraction;
+                        monster.vy *= fraction;
+                        // do not rotate on the X or Z axis while sleeping
+                        return lateralMovementFlags;
+                    }
+                });
+            }
+
+            // do a previous behavior for a period of time
+            if( shift(1) ) {
+                let oldBehaviour = behaviours.splice(0, 1)[0];
+                let repeat = shift(1);
+                let interval = (shift(2)+3)*999;
+                behaviours.push(function(world: World, diff: number, takenFlags: number) {
+                    let step = (monster.age/interval) | 0;
+                    
+                    if( step%2 && repeat || step ) {
+                        return oldBehaviour(world, diff, takenFlags);
+                    }
+                })
+            }
+            // change behavior when close to player
+            if( shift(1) ) {
+                let proximity = (shift(2)+1)*9;
+                let psq = proximity * proximity;
+                let oldBehaviour = behaviours.splice(0, 1)[0];
+                behaviours.push(function(world: World, diff: number, takenFlags: number) {
+                    let enemy = world.getNearestEnemy(monster);
+                    if( enemy ) {
+                        let dx = enemy.x - monster.x;
+                        let dy = enemy.y - monster.y;
+                        if( dx*dx+dy*dy < psq ) {
+                            return oldBehaviour(world, diff, takenFlags);
+                        }
+                    }
+                });
+                
+            }
+            // do only if the player is below or equal z 
+            if( shift(1) ) {
+                let oldBehaviour = behaviours.splice(0, 1)[0];
+                let above = shift(1);
+                behaviours.push(function(world: World, diff: number, takenFlags: number) {
+                    let enemy = world.getNearestEnemy(monster); 
+                    if( enemy ) {
+                        let enemyz = enemy.z - enemy.radius;
+                        let monsterz = monster.z - monster.radius;
+                        if( monsterz >= enemyz - 1 && above || monsterz <= enemyz + 1 && !above ) {
+                            return oldBehaviour(world, diff, takenFlags);
+                        }
+                    }          
+                });
+    
+            }
+        }
+        if( shift(1) ) {
+            // rotate to face direction of travel
+            behaviours.push(function(world: World, diff: number, takenFlags: number) {
+                if( (monster.vx || monster.vy) &&!(takenFlags&MONSTER_BEHAVIOUR_FLAG_ROTATION_Z) ) {
+                    let angle = Math.atan2(monster.vy, monster.vx);
+                    monster.rz = angle;
+                    return MONSTER_BEHAVIOUR_FLAG_ROTATION_Z;
+                }
+            });
+            // rotate on X axis to match velocity
+            if( shift(1) ) {
+                behaviours.push(function(world: World, diff: number, takenFlags: number) {
+                    if( (monster.vx || monster.vy) &&!(takenFlags&MONSTER_BEHAVIOUR_FLAG_ROTATION_X) ) {
+                        let v = Math.sqrt(monster.vx*monster.vx + monster.vy*monster.vy);
+                        monster.rx -= diff * v / monster.radius;
+                        return MONSTER_BEHAVIOUR_FLAG_ROTATION_X;
+                    }
+                });
+            }
+        } else {
+            // rotate constantly on Z axis
+            let rz = (shift(4)+1)/999;
+            behaviours.push(function(world: World, diff: number, takenFlags: number) {
+                if(!(takenFlags&MONSTER_BEHAVIOUR_FLAG_ROTATION_Z)) {
+                    let v = Math.sqrt(monster.vx*monster.vx + monster.vy*monster.vy);
+                    monster.rz += rz * diff * (v+CONST_SMALL_NUMBER);
+                    return MONSTER_BEHAVIOUR_FLAG_ROTATION_Z;
+                }
+            })
+        } 
+
+        if( !maxAge ) {
+            maxAge = (shift(2)+1) * 9999;
+        }
+
+
+        let updater = function(this: Monster, world: World, diff: number) {
+            //this.rz = this.age / 5000;
+            //this.rx = -this.age / 10000;
+            //this.y -= this.age / 1000000;
+            let flag = 0;
+            for( let behaviour of behaviours ) {
+                let f = behaviour(world, diff, flag);
+                if( f ) {
+                    flag |= f;
+                }
+            }
+            if( !FLAG_TEST_PHYSICS ) {
+                if( pushCount ) {
+                    // factor in pushes to make monsters spread out
+                    if( pushX || pushY ) {
+                        let angle = Math.atan2(pushY, pushX);
+                        pushX /= pushCount;
+                        pushY /= pushCount;
+                        let pushLenSquared = 1 - pushX * pushX - pushY * pushY;
+                        monster.vx += Math.cos(angle) * pushLenSquared / CONST_PUSH_DIVISOR;
+                        monster.vy += Math.sin(angle) * pushLenSquared / CONST_PUSH_DIVISOR;    
+                    }
+                    pushCount = 0;
+                    pushX = 0;
+                    pushY = 0;
+                } 
+            }
+            if( monster.age > maxAge ) {
+                monster.die(world);
+            }
+            recentCollisions = [];
+        }
+
+        let recentCollisions: Entity[]  = [];
+        let pushX = 0;
+        let pushY = 0;
+        let pushCount = 0;
+
+        let monster: Monster ={
             type: 1, 
+            seed: seed,
             id: nextId++,
             radius: radius, 
             lineColor: lineColor, 
             lineWidth: lineWidth,
-            fillColor: fillColor, 
+            fillColor: fillColor,
             x: x, 
             y: y, 
             z: z, 
-            restitution: 0.01,
+            restitution: restitution,
             update: updater,
-            onCollision: function(this: Monster, entity: Entity) {
-                if( entity.type && entity.side > this.side ) {
-                    this.deathAge = this.age;
-                }
+            onCollision: function(this: Monster, world: World, entity: Entity) {
+                if( entity.type  ) {
+                    if( !FLAG_TEST_PHYSICS && entity.side > this.side) {
+                        monster.die(world, entity)
+                    } 
+                    let collisionMonster = entity as Monster;
+                    let dx = monster.x - collisionMonster.x;
+                    let dy = monster.y - collisionMonster.y;
+                    let d = collisionMonster.radius + monster.radius;
+                    pushX += dx/d;
+                    pushY += dy/d;
+                    pushCount++;
+                } 
+                recentCollisions.push(entity);
             },
             cleanup: function(this: Monster) {
                 if( FLAG_CLEAN_UP_ENTITY ) {
@@ -647,9 +989,17 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
                     gl.deleteBuffer(barrycentricCoordinatesBuffer);
                 }
             },
+            die: function(this: Monster, world: World, deathSource: Entity) {
+                if( !monster.deathAge ) {
+                    monster.deathAge = monster.age;
+                    for( let deathBehaviour of deathBehaviours ) {
+                        deathBehaviour(world, deathSource);
+                    }
+                }
+            },
             side: SIDE_ENEMY,
             age: 0, 
-            rx: rx, 
+            rx: 0, 
             ry: ry, 
             rz: 0, 
             vx: 0, 
@@ -660,10 +1010,12 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext): MonsterGenerator {
             indicesBuffer: indicesBuffer, 
             indicesCount: indices.length, 
             positionBuffer: positionBuffer, 
-            gravityMultiplier: 1,
+            gravityMultiplier: gravityMultiplier,
             offsetBuffer: offsetBuffer,
             bounds: bounds, 
             cycleLength: cycleLength
         }
+        return monster;
     }
+    return monsterGenerator;
 }

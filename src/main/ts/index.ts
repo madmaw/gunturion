@@ -17,7 +17,7 @@ window.onload = function() {
     }
 
     let rngFactory = sinRandomNumberGeneratorFactory(seed);
-    let monsterGenerator = monsterGeneratorFactory(gl);
+    let monsterGenerator = monsterGeneratorFactory(gl, rngFactory);
     let surfaceGenerator = surfaceGeneratorFactory(gl);
     let chunkGenerator = flatChunkGeneratorFactory(
         surfaceGenerator, 

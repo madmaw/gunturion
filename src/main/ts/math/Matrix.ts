@@ -113,7 +113,25 @@ function matrix4Rotate(x: number, y: number, z: number, rad: number): Matrix4 {
     return [
         x * x * t + c, y * x * t - z * s, z * x * t - y * s, 0, 
         x * y * t + z * s, y * y * t + c, z * y * t - x * s, 0,
+        // note b02 diffs from glMatrix (says it should be z * x * t - y * s)
+        // also worth noting is that b12 should  be y * z * t - x * s according to some texts
         x * z * t + y * s, y * z * t + x * s, z * z * t + c, 0,
+        0, 0, 0, 1
+    ];
+}
+
+function matrix4Rotate2(x: number, y: number, z: number, rad: number): Matrix4 {
+    let s, c, t;
+
+    s = Math.sin(rad);
+    c = Math.cos(rad);
+    t = 1 - c;
+    return [
+        x * x * t + c, y * x * t - z * s, z * x * t - y * s, 0, 
+        x * y * t + z * s, y * y * t + c, z * y * t - x * s, 0,
+        // note b02 diffs from glMatrix (says it should be z * x * t - y * s)
+        // also worth noting is that b12 should  be y * z * t - x * s according to some texts
+        x * z * t + y * s, y * z * t - x * s, z * z * t + c, 0,
         0, 0, 0, 1
     ];
 }

@@ -203,6 +203,7 @@ function initShowPlay(
     let projectionMatrix: Matrix4;
     let canvasWidth: number;
     let canvasHeight: number;
+    let aspectRatio: number;
 
     // NOTE: regenerate should be a boolean really, but onresize passes some truthy value
     let resize = function(regenerate?: any) {
@@ -233,7 +234,8 @@ function initShowPlay(
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, canvasWidth, canvasHeight);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
 
-        projectionMatrix = matrix4Perspective(Math.PI/4, canvasWidth/canvasHeight, CONST_BASE_RADIUS/2, CONST_VISIBLE_DISTANCE);
+        aspectRatio = canvasWidth/canvasHeight;
+        projectionMatrix = matrix4Perspective(CONST_FOV, aspectRatio, CONST_BASE_RADIUS/2, CONST_VISIBLE_DISTANCE);
         let flipMatrix = matrix4Scale(1, -1, 1);
         projectionMatrix = matrix4Multiply(projectionMatrix, flipMatrix);
     
@@ -383,11 +385,11 @@ function initShowPlay(
         }
     
         // generate something gun-like
-        let player = monsterGenerator(25, 0, 0, 2, CONST_BASE_RADIUS);
-        // let player = monsterGenerator(25, 36.53720576658002, -10.998682604682323, 1.3071719462051747, 1);
-        // player.vx = 0.003461038012875774;
-        // player.vy = -0.001968901198244335;
-        // player.vz = 0.0014426801676311327;
+        let player = monsterGenerator(25, 0, 0, 2, .49);
+        // let player = monsterGenerator(25, -0.000007635353276777558, -4.675305475382446e-22, 0.4900000000000674, CONST_BASE_RADIUS);
+        // player.vx = -0.00019996952947114684;
+        // player.vy = -1.2244602209692118e-20;
+        // player.vz = -2.404588689359089e-9;
         
         let walkDistance = 0;
         // TODO can remove once we get our model under control
@@ -407,13 +409,15 @@ function initShowPlay(
         ]);
         //player.specialMatrix = matrix4Translate(2, 0, -player.radius/2);
         let lastShot = 0;
-        let shotInterval = 300;
+        let shotInterval = CONST_BASE_BULLET_INTERVAL;
         let lastFloor = 0;
         if( FLAG_ALLOW_JUMPING ) {
-            player.onCollision = function(this: Monster, other: Entity) {
+            player.onCollision = function(this: Monster, world: World, other: Entity) {
                 let result: number;
                 if( other.type ) {
-                    this.deathAge = this.age;
+                    if( !FLAG_TEST_PHYSICS ) {
+                        this.die(world, other);
+                    }
                 } else {
                     let surface = other as Surface;
                     // you can probably jump
@@ -488,22 +492,26 @@ function initShowPlay(
                         this.x + this.radius*cosZSide/CONST_GUN_BARREL_OFFSET_DIV + this.radius*cosZ*(CONST_GUN_BARREL_LENGTH_MULT+CONST_BULLET_RADIUS), 
                         this.y + this.radius*sinZSide/CONST_GUN_BARREL_OFFSET_DIV + this.radius*sinZ*(CONST_GUN_BARREL_LENGTH_MULT+CONST_BULLET_RADIUS), 
                         this.z + sinX * this.radius*(CONST_GUN_BARREL_LENGTH_MULT + CONST_BULLET_RADIUS), 
-                        CONST_BULLET_RADIUS
+                        CONST_BULLET_RADIUS, 
+                        CONST_BULLET_LIFESPAN
                     );
-                    let bulletVelocity = 0.05; 
-                    bullet.update = function(this: Monster) {
-                        return this.age > 9999;
-                    }
                     bullet.side = SIDE_NEUTRAL;
-                    bullet.onCollision = function(this: Monster, withEntity: Entity) {
-                        if( withEntity.type ) {
-                            this.deathAge = this.age;
+                    bullet.onCollision = function(this: Monster, world: World, withEntity: Entity) {
+                        if( !FLAG_TEST_PHYSICS ) {
+                            bullet.die(world, withEntity);  
+                        }
+                        if( withEntity.type ) {                            
+                            if( FLAG_LOG_KILLS ) {
+                                console.log('killed seed', (withEntity as Monster).seed);
+                            }
                         }
                     }
-                    bullet.restitution = 1;
-                    bullet.vx = cosX * cosZ * bulletVelocity;
-                    bullet.vy = cosX * sinZ * bulletVelocity;
-                    bullet.vz = sinX * bulletVelocity;
+                    if( FLAG_TEST_PHYSICS ) {
+                        bullet.restitution = 1;
+                    }
+                    bullet.vx = cosX * cosZ * CONST_BULLET_VELOCITY;
+                    bullet.vy = cosX * sinZ * CONST_BULLET_VELOCITY;
+                    bullet.vz = sinX * CONST_BULLET_VELOCITY;
                     bullet.fillColor = this.fillColor;
                     bullet.lineColor = this.lineColor;
                     bullet.gravityMultiplier = 0;
@@ -566,7 +574,7 @@ function initShowPlay(
                             let rotationMatrixY = matrix4Rotate(1, 0, 0, -monster.ry);
                             let rotationMatrixZ = matrix4Rotate(0, 0, 1, -monster.rz);
 
-                            let matrixStack = [translationMatrix, rotationMatrixZ, rotationMatrixY, rotationMatrixX, monster.specialMatrix];
+                            let matrixStack = [translationMatrix, rotationMatrixZ, rotationMatrixX, rotationMatrixY, monster.specialMatrix];
 
                             // attempt to find the surface this entity is above
                             directedLightingRange = [0, 0, 0, 0];
@@ -629,7 +637,7 @@ function initShowPlay(
         let update = function(now: number) {
             animationFrameHandle = requestAnimationFrame(update);
 
-            let diff = Math.min(99, now - then);
+            let diff = Math.min(CONST_MAX_FRAME_DURATION, now - then);
             then = now;
 
             world.update(diff);
@@ -645,7 +653,7 @@ function initShowPlay(
             world.setCameraPosition(
                 player.x, 
                 player.y, 
-                player.z + player.radius*.8 + deadness * CONST_VISIBLE_DISTANCE/2, 
+                player.z + player.radius + deadness * CONST_VISIBLE_DISTANCE/2, 
                 (player.rx + Math.PI/2) * (1 - deadness), 
                 player.ry, 
                 player.rz - Math.PI/2
@@ -688,9 +696,30 @@ function initShowPlay(
             } 
 
             context.globalCompositeOperation = 'destination-over';
+            // draw in a background
+            if( FLAG_BACKGROUND ) {
+                context.fillStyle = '#000';
+            
+                let screenPosition = vector3TransformMatrix4(
+                    0, 
+                    CONST_VISIBLE_DISTANCE, 
+                    0, 
+                    matrix4Multiply(projectionMatrix, rotationMatrixX)
+                );
+                // only need y from screen position
+                let backgroundY = (screenPosition[1]* canvasHeight + canvasHeight)/2;
+                let backgroundX = canvasWidth/2;
+
+                while( backgroundX < canvasWidth ) {
+                    context.fillRect(backgroundX, backgroundY - 10, 10, 10);
+                    backgroundX += 20;
+                }
+    
+            }
 
             context.fillStyle = `rgb(${fogColor[0] * 255}, ${fogColor[1] * 255}, ${fogColor[2] * 255})` ;
             context.fillRect(0, 0, canvasWidth, canvasHeight);
+
 
         }   
         update(0);     
