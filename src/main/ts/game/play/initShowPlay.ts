@@ -21,6 +21,7 @@ const V_NORMAL_LIGHTING = 'vNormalLighting_';
 const V_VERTEX_POSITION = 'vVertexPosition_';
 
 const C_BLUR_ITERATIONS = 7;
+const C_MAX_POWER_SOURCES = 9;
 
 let vertexShaderSource = `
 precision lowp float;
@@ -78,6 +79,8 @@ const U_GRID_DIMENSION= 'uGridDimension_';
 const U_GRID_LIGHTING = 'uGridLighting_';
 const U_PREVIOUS = 'uPrevious_';
 const U_PREVIOUS_DIMENSION = 'uPreviousDimension_';
+const U_POWER_SOURCES = 'uPowerSources_';
+const U_POWER_SOURCE_COUNT = 'uPowerSourceCount_';
 
 let fragmentShaderSource = `
 #extension GL_OES_standard_derivatives : enable
@@ -96,6 +99,8 @@ uniform lowp int ${U_GRID_MODE};
 uniform vec2 ${U_GRID_DIMENSION};
 uniform float ${U_GRID_LIGHTING}[4];
 uniform vec4 ${U_DIRECTED_LIGHTING_RANGE};
+uniform vec4 ${U_POWER_SOURCES}[${C_MAX_POWER_SOURCES}];
+uniform lowp int ${U_POWER_SOURCE_COUNT};
 varying vec3 ${V_VERTEX_POSITION};
 varying vec3 ${V_RELATIVE_POSITION};
 varying vec3 ${V_GRID_COORDINATE};
@@ -115,8 +120,6 @@ vec4 getSampleColor(vec2 screenCoordinate, int div, inout float count) {
 
 void main() {
     // TODO can shorten this for sure
-
-    
     float distanceSquared = ${V_RELATIVE_POSITION}.x*${V_RELATIVE_POSITION}.x+${V_RELATIVE_POSITION}.y*${V_RELATIVE_POSITION}.y+${V_RELATIVE_POSITION}.z*${V_RELATIVE_POSITION}.z;
     float distance = sqrt(distanceSquared);
     vec3 relativeNormal = ${V_RELATIVE_POSITION}/distance;
@@ -125,37 +128,59 @@ void main() {
     if( distance < ${U_VISIBLE_DISTANCE} ) {
         fogginess = clamp((visibleDistanceSquared-distanceSquared) / visibleDistanceSquared, 0., 1.);
     }
-    float floorLighting = ${V_NORMAL_LIGHTING}.w * (1. - min((${V_VERTEX_POSITION}.z - (${V_VERTEX_POSITION}.x - ${U_DIRECTED_LIGHTING_RANGE}.x)*${U_DIRECTED_LIGHTING_RANGE}.y - ${U_DIRECTED_LIGHTING_RANGE}.z)/${U_DIRECTED_LIGHTING_RANGE}.w, 1.));
+    vec3 gridColor = vec3(0.);
+    float gridPower = 0.;
+    for( int i=0; i<${C_MAX_POWER_SOURCES}; i++ ) {
+        if( i < ${U_POWER_SOURCE_COUNT} ) {
+            vec4 powerSource = ${U_POWER_SOURCES}[i];
+            vec2 powerSourceDelta = powerSource.xy - ${V_VERTEX_POSITION}.xy;
+            float d = sqrt(powerSourceDelta.x*powerSourceDelta.x + powerSourceDelta.y*powerSourceDelta.y);
+            if( d < powerSource.z ) {
+                float p = d/powerSource.z;
+                float v = 1. - p*p;
+                gridPower += v;
+                gridColor += vec3(.5, powerSource.w, .5 - powerSource.w) * v;
+            }
+        }
+    }
+    if( gridPower > 0. ) {
+        gridColor /= gridPower;
+    }
+    float gridLighting = ${V_NORMAL_LIGHTING}.w * (1. - min((${V_VERTEX_POSITION}.z - (${V_VERTEX_POSITION}.x - ${U_DIRECTED_LIGHTING_RANGE}.x)*${U_DIRECTED_LIGHTING_RANGE}.y - ${U_DIRECTED_LIGHTING_RANGE}.z)/${U_DIRECTED_LIGHTING_RANGE}.w, 1.));
     float pointLighting = clamp((${U_CAMERA_LIGHT}.x-distance) / ${U_CAMERA_LIGHT}.x, 0., 1.) * -dot(relativeNormal,${V_NORMAL_LIGHTING}.xyz) * ${U_CAMERA_LIGHT}.y;
-    float lighting = pointLighting + ${U_AMBIENT_LIGHT} + floorLighting*floorLighting + ${V_NORMAL_LIGHTING}.w;
+    float lighting = pointLighting + ${U_AMBIENT_LIGHT} + ${V_NORMAL_LIGHTING}.w;
     float tileness = 1.;
     vec3 fillColor;
+    vec3 lineColor;
     if( ${U_GRID_MODE} > 0 ) {
         vec3 d = fwidth(${V_GRID_COORDINATE});
         vec3 a3 = smoothstep(vec3(0.0), d*max(1., ${U_LINE_WIDTH} * (1. - distance/${U_VISIBLE_DISTANCE})), ${V_GRID_COORDINATE});
         tileness = min(min(a3.x, a3.y), a3.z);
         fillColor = ${U_FILL_COLOR};
+        lineColor = ${U_LINE_COLOR};
     } else {
         float gx = floor(${V_GRID_COORDINATE}.x);
         float gy = floor(${V_GRID_COORDINATE}.y);
         float mn = min(${V_GRID_COORDINATE}.x - gx, (${V_GRID_COORDINATE}.y - gy)*${V_GRID_COORDINATE}.z);
         float mx = max(${V_GRID_COORDINATE}.x - gx, (${V_GRID_COORDINATE}.y - gy)*${V_GRID_COORDINATE}.z);
-        if( mn < ${U_LINE_WIDTH} || mx > (1. - ${U_LINE_WIDTH}) ) {
+        float lineWidth = 1./60.; 
+        if( mn < lineWidth || mx > (1. - lineWidth) ) {
             float m = min(mn, 1. - mx);
-            tileness = m / ${U_LINE_WIDTH} * (1. - max(0., distance/${U_VISIBLE_DISTANCE}))*(1. - ${U_LINE_WIDTH}) + ${U_LINE_WIDTH};
+            tileness = m / lineWidth * (1. - max(0., distance/${U_VISIBLE_DISTANCE}))*(1. - lineWidth) + lineWidth;
             tileness *= tileness * tileness;
         }    
         float bit = gy*${U_GRID_DIMENSION}.x+gx;
         for( int i=0; i<4; i++ ) {
             if( bit < ${CONST_GL_SAFE_BITS}. && bit >= 0. ) {
-                lighting = max(lighting, mod(floor(${U_GRID_LIGHTING}[i]/pow(2.,bit)), 2.));
+                lighting = max(lighting, mod(floor(${U_GRID_LIGHTING}[i]/pow(2.,bit)), 2.)*3.);
             } 
             bit -= ${CONST_GL_SAFE_BITS}.;
         }
-
+        gridColor = mix(${U_LINE_COLOR}, gridColor, gridPower);
+        lineColor = gridColor;
         fillColor = ${U_FILL_COLOR};
     }
-    vec4 current = vec4(mix(${U_LINE_COLOR}, mix(vec3(0.), fillColor, lighting), tileness), fogginess);
+    vec4 current = vec4(mix(lineColor, mix(vec3(0.), mix(fillColor, gridColor, gridLighting*gridLighting), lighting), tileness), fogginess);
     // blur
     vec2 textureCoordinate = (${V_SCREEN_COORDINATE}.xy/${V_SCREEN_COORDINATE}.w)/2. + .5;
     float count = 0.;
@@ -183,15 +208,16 @@ interface ShowPlay {
 }
 
 function initShowPlay(
+    seed: number,
+    rngFactory: RandomNumberGeneratorFactory,
     offscreenCanvas: HTMLCanvasElement,
     gl: WebGLRenderingContext,
     chunkGenerator: ChunkGenerator, 
-    monsterGenerator: MonsterGenerator, 
-    deathAnimationTime: number, 
-    fogColor: Vector3
+    monsterGenerator: MonsterGenerator
 ): ShowPlay {
     let canvas = document.getElementById('b') as HTMLCanvasElement;
     let context = canvas.getContext('2d');
+    let skybox = document.createElement('img');
 
     let textureData: Uint8Array;
     let textureImageData: ImageData;
@@ -235,12 +261,42 @@ function initShowPlay(
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
 
         aspectRatio = canvasWidth/canvasHeight;
-        projectionMatrix = matrix4Perspective(CONST_FOV, aspectRatio, CONST_BASE_RADIUS/2, CONST_VISIBLE_DISTANCE);
+        projectionMatrix = matrix4Perspective(
+            CONST_FOV, 
+            aspectRatio, 
+            CONST_BASE_RADIUS/2, 
+            CONST_VISIBLE_DISTANCE
+        );
         let flipMatrix = matrix4Scale(1, -1, 1);
         projectionMatrix = matrix4Multiply(projectionMatrix, flipMatrix);
     
         // pretty sure we didn't use to need this?
         gl.viewport(0, 0, canvasWidth, canvasHeight);
+
+        if( FLAG_BACKGROUND ) {
+            // (p)re-render the background
+
+            let skyGradient = context.createLinearGradient(0, 0, 0, canvasHeight/2);
+            skyGradient.addColorStop(0, CONST_SKY_COLOR_HIGH_RGB);
+            skyGradient.addColorStop(1, CONST_SKY_COLOR_LOW_RGB);
+            context.fillStyle = skyGradient;
+            context.fillRect(0, 0, canvasWidth, canvasHeight);
+            let rng = rngFactory(0);
+            let i = 5;
+            while( --i ) {
+                context.fillStyle = CONST_BUILDING_COLORS_RGB[i - 1];
+
+                let x = 0;
+                while( x < canvasWidth ) {
+                    let y = (rng(canvasHeight) + canvasHeight*3)*(Math.sqrt(6 - i))/25 + canvasHeight/5;
+                    let w = (rng(canvasWidth/19) + canvasWidth/49) / (aspectRatio * i);
+                    context.fillRect(x, y, w, canvasHeight);
+                    x += w;
+                }    
+            }
+
+            skybox.src = canvas.toDataURL();
+        }
     }
 
     // turn on the extension(s) we use
@@ -305,6 +361,8 @@ function initShowPlay(
     let uDirectedLightingNormal = gl.getUniformLocation(shaderProgram, U_DIRECTED_LIGHTING_NORMAL);
     let uDirectedLightingRange = gl.getUniformLocation(shaderProgram, U_DIRECTED_LIGHTING_RANGE);
     let uSurfaceNormal = gl.getUniformLocation(shaderProgram, U_SURFACE_NORMAL);
+    let uPowerSources = gl.getUniformLocation(shaderProgram, U_POWER_SOURCES);
+    let uPowerSourceCount = gl.getUniformLocation(shaderProgram, U_POWER_SOURCE_COUNT);
 
     gl.uniform1f(uVisibleDistance, CONST_VISIBLE_DISTANCE);
     gl.uniform4fv(uDirectedLightingNormal, CONST_DIRECTIONAL_LIGHT);
@@ -330,15 +388,34 @@ function initShowPlay(
     
         window.onresize = resize;
 
+        // generate something gun-like
+        let posString = localStorage.getItem(''+seed);
+        let pos: Vector3;
+        if( posString ) {
+            pos = JSON.parse(posString);
+        } else {
+            pos = [0, 0, 0];
+        }
+        
         let world = new World(
-            CONST_ACTIVE_CHUNKS_WIDTH,
-            CONST_ACTIVE_CHUNKS_HEIGHT, 
-            CONST_CHUNK_WIDTH, 
-            CONST_CHUNK_HEIGHT, 
             chunkGenerator, 
             monsterGenerator, 
-            deathAnimationTime
+            pos
         );
+
+        let displayMessageTime: number;
+        let displayMessage: string;
+        let say = function(message: string) {
+            if( FLAG_SPEECH ) {
+                let ut = new SpeechSynthesisUtterance(message);
+                speechSynthesis.speak(ut);
+                ut.onend = function() {
+                    displayMessageTime = world.age - CONST_MESSAGE_TIME;
+                }
+            }
+            displayMessage = message;
+            displayMessageTime = world.age;
+        }
 
         let then = 0;
         let frames = 0;
@@ -384,8 +461,6 @@ function initShowPlay(
             }
         }
     
-        // generate something gun-like
-        let player = monsterGenerator(25, 0, 0, 2, .49);
         // let player = monsterGenerator(25, -0.000007635353276777558, -4.675305475382446e-22, 0.4900000000000674, CONST_BASE_RADIUS);
         // player.vx = -0.00019996952947114684;
         // player.vy = -1.2244602209692118e-20;
@@ -393,6 +468,11 @@ function initShowPlay(
         
         let walkDistance = 0;
         // TODO can remove once we get our model under control
+        let player = monsterGenerator(
+            25, 
+            pos[0], pos[1], pos[2] + 2, 
+            .49
+        );
         player.ry = 0;
         // end TODO
         //player.visible = 0;
@@ -401,6 +481,10 @@ function initShowPlay(
         player.fillColor = [.2, .2, 0];
         // make it look like a gun
         let scale = .15;
+        player.die = function() {
+            player.deathAge = player.age;
+            say("HULL FAILURE");
+        }
         
         player.specialMatrix = matrix4MultiplyStack([
             matrix4Translate(player.radius, -player.radius/CONST_GUN_BARREL_OFFSET_DIV, 0), 
@@ -409,7 +493,7 @@ function initShowPlay(
         ]);
         //player.specialMatrix = matrix4Translate(2, 0, -player.radius/2);
         let lastShot = 0;
-        let shotInterval = CONST_BASE_BULLET_INTERVAL;
+        let lastPower = 0;
         let lastFloor = 0;
         if( FLAG_ALLOW_JUMPING ) {
             player.onCollision = function(this: Monster, world: World, other: Entity) {
@@ -476,22 +560,48 @@ function initShowPlay(
             }
             player.vx = vx;
             player.vy = vy;
-            
-            if( shooting ) {
-                if( this.age > lastShot + shotInterval ) {
+
+            // work out our gun power
+            let power = 0;
+            // buildings are already sorted
+            let buildings = world.allEntities[SIDE_BUILDING] as Building[];
+            let i = 0;
+            while( i < buildings.length ) {
+                let building = buildings[i++];
+                let buildingX = building.chunkX * CONST_CHUNK_WIDTH + CONST_CHUNK_WIDTH/2;
+                let buildingY = building.chunkY * CONST_CHUNK_HEIGHT + CONST_CHUNK_HEIGHT/2;
+                let dx = player.x - buildingX;
+                let dy = player.y - buildingY;
+                let dsq = dx * dx + dy * dy;
+                let extendedBuildingPower = building.power * CONST_BUILDING_POWER_EXTRA; 
+                if ( dsq < extendedBuildingPower * extendedBuildingPower ) {
+                    let d = extendedBuildingPower - Math.sqrt(dsq);
+                    power += d*d/(CONST_NORMAL_POWER_DISTANCE*extendedBuildingPower);
+                }
+            }
+            if( lastPower && !power && window.speechSynthesis ) {
+                // issue a warning
+                say("WEAPONS OFFLINE");
+            } else if( !lastPower && power ) {
+                say('WEAPONS ONLINE');
+            }    
+            lastPower = power;
+            if( shooting && power ) {
+                let shotInterval = CONST_BASE_BULLET_INTERVAL + CONST_DELTA_BULLET_INTERVAL * (1 - Math.sqrt(power));
+                if( player.age > lastShot + shotInterval ) {
                     let sinX = Math.sin(player.rx);
                     let cosX = Math.cos(player.rx);
-                    if( lastShot + shotInterval + amt > this.age ) {
+                    if( lastShot + shotInterval + amt > player.age ) {
                         lastShot = lastShot + shotInterval;
                     } else {
-                        lastShot = this.age;
+                        lastShot = player.age;
                     }
                     // shoot
                     let bullet = monsterGenerator(
                         818, 
-                        this.x + this.radius*cosZSide/CONST_GUN_BARREL_OFFSET_DIV + this.radius*cosZ*(CONST_GUN_BARREL_LENGTH_MULT+CONST_BULLET_RADIUS), 
-                        this.y + this.radius*sinZSide/CONST_GUN_BARREL_OFFSET_DIV + this.radius*sinZ*(CONST_GUN_BARREL_LENGTH_MULT+CONST_BULLET_RADIUS), 
-                        this.z + sinX * this.radius*(CONST_GUN_BARREL_LENGTH_MULT + CONST_BULLET_RADIUS), 
+                        player.x + player.radius*cosZSide/CONST_GUN_BARREL_OFFSET_DIV + player.radius*cosZ*(CONST_GUN_BARREL_LENGTH_MULT+CONST_BULLET_RADIUS), 
+                        player.y + player.radius*sinZSide/CONST_GUN_BARREL_OFFSET_DIV + player.radius*sinZ*(CONST_GUN_BARREL_LENGTH_MULT+CONST_BULLET_RADIUS), 
+                        player.z + sinX * player.radius*(CONST_GUN_BARREL_LENGTH_MULT + CONST_BULLET_RADIUS), 
                         CONST_BULLET_RADIUS, 
                         CONST_BULLET_LIFESPAN
                     );
@@ -512,8 +622,8 @@ function initShowPlay(
                     bullet.vx = cosX * cosZ * CONST_BULLET_VELOCITY;
                     bullet.vy = cosX * sinZ * CONST_BULLET_VELOCITY;
                     bullet.vz = sinX * CONST_BULLET_VELOCITY;
-                    bullet.fillColor = this.fillColor;
-                    bullet.lineColor = this.lineColor;
+                    bullet.fillColor = player.fillColor;
+                    bullet.lineColor = player.lineColor;
                     bullet.gravityMultiplier = 0;
 
                     world.addEntity(bullet);
@@ -522,22 +632,37 @@ function initShowPlay(
         }
         world.addEntity(player);
 
-        let render = function(projectionMatrix: Matrix4, viewMatrix: Matrix4, previousViewMatrix: Matrix4) {
 
+        let render = function(projectionMatrix: Matrix4, viewMatrix: Matrix4, previousViewMatrix: Matrix4) {
             // Clear the color buffer with specified clear color
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     
+            let buildings = world.allEntities[SIDE_BUILDING] as Building[];
+            let powerSources: number[] = [];
+            let powerSourceCount = Math.min(buildings.length, C_MAX_POWER_SOURCES);
+            for( let i=0; i<powerSourceCount; i++ ) {
+                let building = buildings[i] as Building;
+                powerSources.push(
+                    building.chunkX * CONST_CHUNK_WIDTH + CONST_CHUNK_WIDTH/2, 
+                    building.chunkY * CONST_CHUNK_HEIGHT + CONST_CHUNK_HEIGHT/2, 
+                    Math.sqrt(building.power) * 2 + CONST_CHUNK_DIMENSION_MAX, 
+                    building.friendliness * .5
+                );
+            }
+
+            gl.uniform4fv(uPowerSources, powerSources);
+            gl.uniform1i(uPowerSourceCount, powerSourceCount);
+
             gl.bindTexture(gl.TEXTURE_2D, sourceTexture);
             gl.uniform1i(uPrevious, 0);
             gl.uniform2f(uPreviousDimension, 1/canvasWidth, 1/canvasHeight);
             gl.uniformMatrix4fv(uProjectionMatrix, false, projectionMatrix);
             gl.uniformMatrix4fv(uViewMatrix, false, viewMatrix);
             gl.uniformMatrix4fv(uPreviousViewMatrix, false, previousViewMatrix);
-            gl.uniform1f(uAmbientLight, CONST_AMBIENT_LIGHT_INTENSITY);
             
 
             if( FLAG_MUZZLE_FLASH ) {
-                let shotLightBonus = Math.max(0, lastShot + shotInterval/2 - world.age)/(shotInterval/2);
+                let shotLightBonus = Math.max(0, lastShot + CONST_MUZZEL_FLASH_DURATION - world.age)/CONST_MUZZEL_FLASH_DURATION;
                 gl.uniform2f(uCameraLight, CONST_CAMERA_LIGHT_DISTANCE + shotLightBonus, CONST_CAMERA_LIGHT_INTENSITY + shotLightBonus*.2);    
             } else {
                 gl.uniform2f(uCameraLight, CONST_CAMERA_LIGHT_DISTANCE, CONST_CAMERA_LIGHT_INTENSITY);    
@@ -548,21 +673,24 @@ function initShowPlay(
                 if( side as any != SIDE_BUILDING ) {
                     let entities = world.allEntities[side];
                     for( let entity of entities ) {
-                        let rendered = entity as Rendered;
+                        let surfaceOrMonster = entity as Surface | Monster;
                         if( FLAG_GL_CULL_EXPLOSIONS ) {
                             gl.enable(gl.CULL_FACE);
                         }
             
-                        webglBindAttributeBuffer(gl, rendered.positionBuffer, aVertexPosition, 4);
-                        webglBindAttributeBuffer(gl, rendered.gridCoordinateBuffer, aGridCoordinate, 4);
+                        webglBindAttributeBuffer(gl, surfaceOrMonster.positionBuffer, aVertexPosition, 4);
+                        webglBindAttributeBuffer(gl, surfaceOrMonster.gridCoordinateBuffer, aGridCoordinate, 4);
                         
-                        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, rendered.indicesBuffer);
+                        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, surfaceOrMonster.indicesBuffer);
             
-                        let lineColor = rendered.lineColor;
-                        let fillColor = rendered.fillColor;
+                        let fillColor = surfaceOrMonster.fillColor;
                         let directedLightingRange: Vector4;
+                        let ambientLighting = CONST_AMBIENT_LIGHT_INTENSITY;
+                        if( surfaceOrMonster.lastDamageAge && surfaceOrMonster.lastDamageAge + CONST_DAMAGE_FLASH_DURATION > world.age ) {
+                            ambientLighting += (1 - (surfaceOrMonster.lastDamageAge + CONST_DAMAGE_FLASH_DURATION - world.age)/CONST_DAMAGE_FLASH_DURATION)/2;
+                        }
+    
 
-                        gl.uniform1f(uLineWidth, rendered.lineWidth);
                         gl.uniform1i(uGridMode, entity.type);
 
                         let offsetBuffer: WebGLBuffer;
@@ -588,24 +716,27 @@ function initShowPlay(
             
                             let cycle = entity.age / monster.cycleLength;
                             let offsetMultiplier = 0;
+                            let lineColor = monster.lineColor;
                             if( monster.deathAge ) {
                                 if( !FLAG_GL_CULL_EXPLOSIONS ) {
                                     gl.disable(gl.CULL_FACE);
                                 }
-                                let b = (entity.age - monster.deathAge)/deathAnimationTime;
+                                let b = (entity.age - monster.deathAge)/CONST_DEATH_ANIMATION_TIME;
                                 let bsq = b * b;
                                 let scale = 1 - bsq*.99;
                                 offsetMultiplier = bsq * 3 * monster.radius / scale; 
                                 // explode away from the camera
                                 //matrixStack.splice(1, 0, matrix4Scale(1 - b * sinZ, 1 - b * cosZ, 1 - b));
                                 matrixStack.splice(1, 0, matrix4Scale(scale, scale, scale));
-                                lineColor = vector3Mix(fogColor, lineColor, bsq);
-                                fillColor = vector3Mix(fogColor, fillColor, bsq);
+                                lineColor = vector3Mix(CONST_FOG_COLOR_VECTOR, lineColor, bsq);
+                                fillColor = vector3Mix(CONST_FOG_COLOR_VECTOR, fillColor, bsq);
                                 // do one last animation
-                                cycle = monster.deathAge / monster.cycleLength + (monster.age - monster.deathAge)/deathAnimationTime;
+                                cycle = monster.deathAge / monster.cycleLength + (monster.age - monster.deathAge)/CONST_DEATH_ANIMATION_TIME;
                             }
                             gl.uniform1f(uCycleRadians, cycle * Math.PI * 2);
                             gl.uniform1f(uOffsetMultiplier, offsetMultiplier);
+                            gl.uniform1f(uLineWidth, monster.lineWidth);
+                            gl.uniform3fv(uLineColor, lineColor);
             
                             let modelMatrix = matrix4MultiplyStack(matrixStack);
                             gl.uniformMatrix4fv(uModelMatrix, false, modelMatrix);
@@ -614,20 +745,21 @@ function initShowPlay(
                             let surface = entity as Surface;
                             // doesn't get used, but put something in to prevent errors from disposed buffers
                             offsetBuffer = surface.gridCoordinateBuffer;
-        
+
                             gl.uniform3fv(uSurfaceNormal, surface.normal);
                             gl.uniformMatrix4fv(uModelMatrix, false, surface.pointsToWorld);
                             gl.uniform2f(uGridDimension, surface.width, surface.height);
                             gl.uniform1fv(uGridLighting, surface.gridLighting);
+                            gl.uniform3fv(uLineColor, CONST_INERT_GRID_COLOR_RGB);
                             directedLightingRange = surface.directedLightingRange;
                         }
                         webglBindAttributeBuffer(gl, offsetBuffer, aVertexOffset, 4); 
             
-                        gl.uniform3fv(uLineColor, lineColor);
                         gl.uniform3fv(uFillColor, fillColor);
                         gl.uniform4fv(uDirectedLightingRange, directedLightingRange);
+                        gl.uniform1f(uAmbientLight, ambientLighting);
 
-                        gl.drawElements(gl.TRIANGLES, rendered.indicesCount, FLAG_GL_16_BIT_INDEXES?gl.UNSIGNED_SHORT:gl.UNSIGNED_BYTE, 0);
+                        gl.drawElements(gl.TRIANGLES, surfaceOrMonster.indicesCount, FLAG_GL_16_BIT_INDEXES?gl.UNSIGNED_SHORT:gl.UNSIGNED_BYTE, 0);
                     }
                 }                    
             }
@@ -635,6 +767,7 @@ function initShowPlay(
 
         let previousViewMatrix = matrix4Identity();
         let update = function(now: number) {
+            
             animationFrameHandle = requestAnimationFrame(update);
 
             let diff = Math.min(CONST_MAX_FRAME_DURATION, now - then);
@@ -675,6 +808,15 @@ function initShowPlay(
             let rotationMatrixZ = matrix4Rotate(0, 0, 1, world.cameraRotationZ);
             let translationMatrix = matrix4Translate(-world.cameraX, -world.cameraY, -world.cameraZ);
             let viewMatrix = matrix4MultiplyStack([rotationMatrixX, /*rotationMatrixY,*/ walkTranslationMatrix, rotationMatrixZ, translationMatrix]);
+            // sort the buildings so they are closest to the player
+            let buildings = world.allEntities[SIDE_BUILDING] as Building[];            
+            buildings.sort(function(a: Building, b: Building) {
+                let dxa = world.cameraX - a.chunkX * CONST_CHUNK_WIDTH;              
+                let dya = world.cameraY - a.chunkY * CONST_CHUNK_HEIGHT;
+                let dxb = world.cameraX - b.chunkX * CONST_CHUNK_WIDTH;
+                let dyb = world.cameraY - b.chunkY * CONST_CHUNK_HEIGHT;
+                return dxa * dxa + dya * dya - dxb * dxb - dyb * dyb;  
+            });
 
             render(projectionMatrix, viewMatrix, previousViewMatrix);
 
@@ -688,18 +830,9 @@ function initShowPlay(
             textureImageData.data.set(textureData);
             context.putImageData(textureImageData, 0, 0);    
 
-            if( FLAG_SHOW_FPS && diff ) {
-                context.globalCompositeOperation = 'source-over';
-                context.fillStyle = '#f00';
-                frames ++;
-                context.fillText(`${Math.round((frames * 1000)/now)} (${Math.round(1000/diff)}) FPS`, 10, 30);    
-            } 
-
             context.globalCompositeOperation = 'destination-over';
             // draw in a background
             if( FLAG_BACKGROUND ) {
-                context.fillStyle = '#000';
-            
                 let screenPosition = vector3TransformMatrix4(
                     0, 
                     CONST_VISIBLE_DISTANCE, 
@@ -707,20 +840,59 @@ function initShowPlay(
                     matrix4Multiply(projectionMatrix, rotationMatrixX)
                 );
                 // only need y from screen position
-                let backgroundY = (screenPosition[1]* canvasHeight + canvasHeight)/2;
-                let backgroundX = canvasWidth/2;
+                let backgroundY = (screenPosition[1] * canvasHeight)/2 + 99;
+                let backgroundX = (world.cameraRotationZ * canvasWidth / (CONST_FOV * aspectRatio)) % canvasWidth - canvasWidth;
 
-                while( backgroundX < canvasWidth ) {
-                    context.fillRect(backgroundX, backgroundY - 10, 10, 10);
-                    backgroundX += 20;
+                while( backgroundX < canvasWidth ) 
+                {
+                    context.drawImage(skybox, backgroundX, backgroundY - canvasHeight/2);
+                    backgroundX += canvasWidth;
                 }
     
+                context.fillStyle = CONST_SKY_COLOR_HIGH_RGB;
+                context.fillRect(0, 0, canvasWidth, canvasHeight);
+                
+            } else {
+                context.fillStyle = CONST_FOG_COLOR_RGB;
+                context.fillRect(0, 0, canvasWidth, canvasHeight);    
             }
 
-            context.fillStyle = `rgb(${fogColor[0] * 255}, ${fogColor[1] * 255}, ${fogColor[2] * 255})` ;
-            context.fillRect(0, 0, canvasWidth, canvasHeight);
+            context.globalCompositeOperation = 'source-over';
+            if( FLAG_SHOW_FPS && diff ) {
+                context.textAlign = 'left';
+                context.font = `12px sans-serif`;
+                context.fillStyle = '#f00';
+                frames ++;
+                context.fillText(`${Math.round((frames * 1000)/now)} (${Math.round(1000/diff)}) FPS`, 10, 30);    
+            } 
 
-
+            context.fillStyle = context.strokeStyle = '#fff';
+            context.globalAlpha = Math.abs(Math.sin(world.age/99))/2+.5;
+            if( displayMessageTime && world.age - displayMessageTime < CONST_MESSAGE_TIME ) {
+                context.textAlign = 'center';
+                context.font = `${CONST_STATUS_HEIGHT}px sans-serif`;
+                context.fillText(displayMessage, canvasWidth/2, canvasHeight/2);
+            }
+            if( !player.deathAge ) {
+                if( lastPower ) {
+                    context.globalAlpha = 1;
+                    let fillStyle;                
+                    if( lastPower < .2 ) {
+                        fillStyle = 'red';
+                    }  else if( lastPower < .5 ) {
+                        fillStyle = '#ff0';
+                    } else {
+                        fillStyle = '#6f6';
+                    }
+                    context.fillStyle = fillStyle;
+                } else {
+                    context.strokeStyle = 'red';
+                }
+                // show grid power
+                context.fillRect(canvasWidth - CONST_STATUS_HEIGHT * 3, CONST_STATUS_HEIGHT, CONST_STATUS_HEIGHT * 2 * lastPower, CONST_STATUS_HEIGHT);
+                context.strokeRect(canvasWidth - CONST_STATUS_HEIGHT * 3, CONST_STATUS_HEIGHT, CONST_STATUS_HEIGHT * 2, CONST_STATUS_HEIGHT);    
+            }
+            context.globalAlpha = 1;
         }   
         update(0);     
     

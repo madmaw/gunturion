@@ -26,3 +26,5 @@ const FLAG_TEST_PHYSICS = false;
 const FLAG_DETECT_MULTIPLE_COLLISIONS = true;
 const FLAG_SPAWN_RANDOM_MONSTERS = false;
 const FLAG_BACKGROUND = true;
+const FLAG_START_AT_LAST_LIBERATED = true;
+const FLAG_SPEECH = true;

@@ -28,9 +28,7 @@ interface Bounded {
 }
 
 interface Rendered {
-    lineColor: Vector3;
     fillColor: Vector3;
-    lineWidth: number;
     positionBuffer: WebGLBuffer;
     gridCoordinateBuffer: WebGLBuffer;
     indicesBuffer: WebGLBuffer;
@@ -49,7 +47,10 @@ interface Monster extends EntityBase, Updatable, Bounded, Rendered {
     rx: number;
     ry: number; 
     rz: number;
+    lineColor: Vector3;
+    lineWidth: number;
     specialMatrix?: Matrix4;
+    lastDamageAge?: number;
     deathAge?: number;
     birthday?: number,
     offsetBuffer: WebGLBuffer;
@@ -86,6 +87,8 @@ interface Surface extends EntityBase, Bounded, Rendered {
     height: number;
     gridLighting: number[];
     directedLightingRange: Vector4;
+    lastDamageAge?: number;
+    onCollision?: (world: World, entity: Entity) => void;
 }
 
 interface Building extends EntityBase, Updatable {
@@ -93,6 +96,7 @@ interface Building extends EntityBase, Updatable {
     chunkX: number;
     chunkY: number;
     power: number;
+    friendliness: number;
 }
 
 type Entity = Monster | Surface | Building;
@@ -119,9 +123,9 @@ interface SurfaceGenerator {
         chunkY: number,
         rotateX: number, 
         rotateY: number, 
-        gridColor: Vector3, 
         fillColor: Vector3, 
-        directedLightingRange: Vector4
+        directedLightingRange: Vector4, 
+        onCollision?: (world: World, entity: Entity) => void
     ): Surface;
 }
 
@@ -139,9 +143,9 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
         chunkY: number,
         rotateX: number, 
         rotateY: number, 
-        lineColor: Vector3, 
         fillColor: Vector3, 
-        directedLightingRange: Vector4
+        directedLightingRange: Vector4, 
+        onCollision: (world: World, entity: Entity) => void
     ) {
         let surfaceId = --nextId;
 
@@ -226,8 +230,6 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
             chunkY: chunkY,
             width: width, 
             height: height,
-            lineColor: lineColor, 
-            lineWidth: 0.02/lineScale,
             fillColor: fillColor, 
             positionBuffer: floorPositionBuffer, 
             gridCoordinateBuffer: gridCoordinateBuffer,
@@ -246,7 +248,8 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
             },
             bounds: function(this: Surface): Rect3 {
                 return bounds;
-            }
+            }, 
+            onCollision: onCollision
         };
         return surface;
     }    
@@ -774,14 +777,6 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         if( shift(1) ) {
 
         }
-        // dive bomb
-        if( shift(1) ) {
-
-        }
-        // fly toward player height
-        if( shift(1) ) {
-            
-        }
         // jump
         if( !shift(3) ) {
             let impulse = (shift(4)+1)/999;
@@ -814,7 +809,23 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                     monster.die(world, monster);
                 });
             }
-  
+
+            // fly toward player height
+            if( !gravityMultiplier ) {
+                let speed = (shift(4)+1-Math.random()*.1)/9999;
+                behaviours.unshift(function(world: World, diff: number, takenFlags: number) {
+                    if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT ) ) {
+                        let target = world.getNearestEnemy(monster);
+                        if( target ) {
+                            let dz = target.z - monster.z;
+                            if( dz ) {
+                                monster.vz = dz/Math.abs(dz) * Math.min(speed, Math.abs(dz)/diff);
+                                return MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT;        
+                            }                        
+                        }
+                    }
+                });          
+            }  
             
             // be lazy 
             if( shift(2) == 1 ) {
@@ -970,6 +981,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                 if( entity.type  ) {
                     if( !FLAG_TEST_PHYSICS && entity.side > this.side) {
                         monster.die(world, entity)
+                        monster.lastDamageAge = world.age;
                     } 
                     let collisionMonster = entity as Monster;
                     let dx = monster.x - collisionMonster.x;

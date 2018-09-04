@@ -26,18 +26,13 @@ class World {
     private chunkDimensions: Vector2;
 
     constructor(
-        private activeChunksWidth: number, 
-        private activeChunksHeight: number, 
-        private chunkWidth: number, 
-        private chunkHeight: number,
         private chunkGenerator: ChunkGenerator,
-        private monsterCreator: MonsterGenerator, 
-        private deathAnimationTime: number
-        
+        private monsterCreator: MonsterGenerator,
+        cameraPosition: Vector3        
     ) {
         this.activeTiles = array2dCreate(
-            activeChunksWidth, 
-            activeChunksHeight, 
+            CONST_ACTIVE_CHUNKS_WIDTH, 
+            CONST_ACTIVE_CHUNKS_HEIGHT, 
             function() {
                 return [];
             }
@@ -52,8 +47,8 @@ class World {
         this.age = 0;
         this.ticks = 0;
         this.bonusMillis = 0;
-        this.chunkDimensions = [chunkWidth, chunkHeight];
-        this.setCameraPosition(0, 0, 1, 0, 0, 0); 
+        this.chunkDimensions = [CONST_CHUNK_WIDTH, CONST_CHUNK_HEIGHT];
+        this.setCameraPosition(cameraPosition[0], cameraPosition[1], cameraPosition[2], 0, 0, 0); 
     }
 
     public update(amt: number) {
@@ -79,7 +74,7 @@ class World {
 
             updatableEntity.age += amt;
             if( updatableEntity.type == 1 && updatableEntity.deathAge ) {
-                if( updatableEntity.age > updatableEntity.deathAge + this.deathAnimationTime ) {
+                if( updatableEntity.age > updatableEntity.deathAge + CONST_DEATH_ANIMATION_TIME ) {
                     // remove 
                     this.removeEntity(updatableEntity);
                 }
@@ -101,7 +96,7 @@ class World {
                 }
 
                 if( updatableEntity.type == 1 ) {
-                    updatableEntity.vz -= amt * .00005 * updatableEntity.gravityMultiplier;
+                    updatableEntity.vz -= amt * CONST_GRAVITY_ACCELERATION * updatableEntity.gravityMultiplier;
                     let amtRemaining = amt;
                     let collisionsRemaining = CONST_MAX_COLLISIONS;
                     let updatableMonster = updatableEntity as Monster;
@@ -446,6 +441,9 @@ class World {
                                 //activeMonster.vx = activeMonster.vy = activeMonster.vz = 0;
                                 // bounce
                                 let surface = minCollisionEntity as Surface;
+                                if( surface.onCollision ) {
+                                    surface.onCollision(this, updatableEntity);                                    
+                                }
                                 updatableEntity.onCollision(this, minCollisionEntity);
                             }
                             if( minCollisionPhysics ) {
@@ -479,10 +477,10 @@ class World {
         this.cameraRotationY = rotationY;
         this.cameraRotationZ = rotationZ;
 
-        let minChunkX = Math.floor(x/this.chunkWidth - this.activeChunksWidth / 2);
-        let minChunkY = Math.floor(y/this.chunkHeight - this.activeChunksHeight / 2);
-        let maxChunkX = Math.floor(x/this.chunkWidth + this.activeChunksWidth / 2) - 1;
-        let maxChunkY = Math.floor(y/this.chunkHeight + this.activeChunksHeight / 2) - 1;
+        let minChunkX = Math.floor(x/CONST_CHUNK_WIDTH - CONST_ACTIVE_CHUNKS_WIDTH / 2);
+        let minChunkY = Math.floor(y/CONST_CHUNK_HEIGHT - CONST_ACTIVE_CHUNKS_HEIGHT / 2);
+        let maxChunkX = Math.floor(x/CONST_CHUNK_WIDTH + CONST_ACTIVE_CHUNKS_WIDTH / 2) - 1;
+        let maxChunkY = Math.floor(y/CONST_CHUNK_HEIGHT + CONST_ACTIVE_CHUNKS_HEIGHT / 2) - 1;
 
         if( this.activeTileArea == null ) {
             // generate everything
@@ -647,8 +645,8 @@ class World {
     public getEntitiesAt(chunkX: number, chunkY: number): (Monster | Surface)[] {
         let result: (Monster | Surface)[];
         if( rect2Contains(this.activeTileArea, chunkX, chunkY) ) {
-            let xm = numberPositiveMod(chunkX, this.activeChunksWidth);
-            let ym = numberPositiveMod(chunkY, this.activeChunksHeight);
+            let xm = numberPositiveMod(chunkX, CONST_ACTIVE_CHUNKS_WIDTH);
+            let ym = numberPositiveMod(chunkY, CONST_ACTIVE_CHUNKS_HEIGHT);
             result = this.activeTiles[xm][ym];
         }
         return result;

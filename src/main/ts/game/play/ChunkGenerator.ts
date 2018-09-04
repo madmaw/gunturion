@@ -3,21 +3,19 @@ interface ChunkGenerator {
 }
 
 function flatChunkGeneratorFactory(
+    seed: number,
     surfaceGenerator: SurfaceGenerator,
     monsterGenerator: MonsterGenerator, 
     rngFactory: RandomNumberGeneratorFactory
 ): ChunkGenerator {
 
-    let floorLineColor = [.4, .4, .2];
-    let floorFillColor = [.2, .2, .3];
-    let wallLineColor = [.4, .4, .2];
-    let wallFillColor = [.2, .2, .2];
-    let badLineColor = [.4, .4, .2];
-    let badFillColor = [.2, .2, .2];
+    let neutralFillColor = [.1, .1, .1];
+    let goodFillColor = [.1, .1, .15];
+    let badFillColor = [.15, .1, .1];
 
     function getFloorHeight(chunkX: number, chunkY: number) {
         // a lot of tiles aren't actually random
-        chunkX -= 9;
+        chunkX -= 3;
         let floorHeight: number;
         if( chunkX < 0 ) {
             floorHeight = 0;
@@ -32,6 +30,7 @@ function flatChunkGeneratorFactory(
 
         let x = chunkX * CONST_CHUNK_WIDTH;
         let y = chunkY * CONST_CHUNK_HEIGHT; 
+        let buildingKey = ''+seed+" "+chunkX+" "+chunkY;
 
         let monsterSeedPalette: number[] = [];
         let z = getFloorHeight(chunkX, chunkY);
@@ -64,8 +63,7 @@ function flatChunkGeneratorFactory(
                 width, CONST_CHUNK_HEIGHT, 
                 chunkX, chunkY, 
                 0, angle, 
-                floorLineColor, 
-                floorFillColor, 
+                neutralFillColor, 
                 directedLightingRange
             );    
         } else {
@@ -75,8 +73,7 @@ function flatChunkGeneratorFactory(
                 CONST_CHUNK_WIDTH, CONST_CHUNK_HEIGHT, 
                 chunkX, chunkY, 
                 0, 0, 
-                floorLineColor, 
-                floorFillColor, 
+                neutralFillColor, 
                 directedLightingRange
             );    
         }
@@ -88,8 +85,7 @@ function flatChunkGeneratorFactory(
                 eastZ - z, CONST_CHUNK_HEIGHT, 
                 chunkX, chunkY, 
                 0, Math.PI/2,  
-                wallLineColor, 
-                wallFillColor, 
+                neutralFillColor, 
                 directedLightingRange
             );
             entities.push(wall);
@@ -100,8 +96,7 @@ function flatChunkGeneratorFactory(
                 CONST_CHUNK_WIDTH, northZ - z, 
                 chunkX, chunkY, 
                 Math.PI/2, 0,  
-                wallLineColor, 
-                wallFillColor, 
+                neutralFillColor, 
                 directedLightingRange
             );
             entities.push(wall);
@@ -113,13 +108,12 @@ function flatChunkGeneratorFactory(
                 CONST_CHUNK_WIDTH, wallDepth, 
                 chunkX, chunkY, 
                 -Math.PI/2, 0,
-                wallLineColor, 
-                wallFillColor, 
+                neutralFillColor, 
                 directedLightingRange
             );
             entities.push(wall);
         }
-        let building = chunkX > 1 && !stairs && tileRng() < .2;
+        let building = chunkX >= 0 && !stairs && tileRng() < .1;
         // let i = 9;
         // while( building && i ) {
         //     i--;
@@ -143,58 +137,70 @@ function flatChunkGeneratorFactory(
             let buildingShift = tileRng(4)+1;
             let walls: Surface[] = [];
             let maxSpawnCount = 0;
+            let maxHealth = 0;
+            let liberated = localStorage.getItem(buildingKey) || chunkX<2 || tileRng()<.1;
+            let fillColor = liberated?goodFillColor:badFillColor;
+            let onCollision = function(this: Surface, world: World, entity: Entity) {
+                if( entity.side == SIDE_NEUTRAL ) {
+                    this.lastDamageAge = world.age;
+                    // it's a player's bullet
+                    damage++;
+                }
+            };
             while( buildingSegments-- && buildingWidth > 1 && buildingHeight > 1 ) {
 
                 let buildingX = x + ((CONST_CHUNK_WIDTH - buildingWidth)>>1);
                 let buildingY = y + ((CONST_CHUNK_HEIGHT - buildingHeight)>>1);
-
+    
                 maxSpawnCount += buildingWidth * buildingHeight;
+
+                maxHealth += buildingWidth * buildingHeight;
 
                 let buildingWallWest = surfaceGenerator( 
                     buildingX, buildingY, buildingZ, 
                     buildingWidth, buildingDepth, 
                     chunkX, chunkY, 
                     Math.PI/2, 0, 
-                    badLineColor, 
-                    badFillColor, 
-                    directedLightingRange
-
+                    fillColor, 
+                    directedLightingRange, 
+                    onCollision
                 );
+            
                 let buildingWallEast = surfaceGenerator( 
                     buildingX, buildingY + buildingHeight, buildingZ + buildingDepth, 
                     buildingWidth, buildingDepth, 
                     chunkX, chunkY, 
                     -Math.PI/2, 0, 
-                    badLineColor, 
-                    badFillColor,       
-                    directedLightingRange
+                    fillColor, 
+                    directedLightingRange, 
+                    onCollision
                 );
                 let buildingWallSouth = surfaceGenerator(
                     buildingX, buildingY, buildingZ, 
                     buildingDepth, buildingHeight, 
                     chunkX, chunkY, 
                     0, Math.PI/2, 
-                    badLineColor, 
-                    badFillColor, 
-                    directedLightingRange
+                    fillColor, 
+                    directedLightingRange, 
+                    onCollision
                 );
                 let buildingWallNorth = surfaceGenerator(
                     buildingX + buildingWidth, buildingY, buildingZ + buildingDepth, 
                     buildingDepth, buildingHeight, 
                     chunkX, chunkY, 
                     0, -Math.PI/2, 
-                    badLineColor, 
-                    badFillColor, 
-                    directedLightingRange
+                    fillColor, 
+                    directedLightingRange, 
+                    onCollision
                 );
                 let buildingRoof = surfaceGenerator(
                     buildingX, buildingY, buildingZ + buildingDepth, 
                     buildingWidth, buildingHeight, 
                     chunkX, chunkY, 
                     0, 0, 
-                    badLineColor, 
-                    badFillColor, 
-                    directedLightingRange
+                    fillColor, 
+                    directedLightingRange, 
+                    onCollision
                 );
                 
                 walls.push(buildingWallEast, buildingWallWest, buildingWallSouth, buildingWallNorth, buildingRoof);
@@ -222,8 +228,10 @@ function flatChunkGeneratorFactory(
             let spawnType: number;
             let spawnTypes = [];
             let spawns:{[_:number]:{[_:number]:Monster}} = {};
-            let active: boolean;
             let nextBirth: number = 0;            
+            let damage = liberated?maxHealth:0;
+            let power = damage/CONST_HEALTH_POWER_RATIO;
+            let previousDamage = damage;
 
             let spawnTypeCount = tileRng(3) + 1;
             while( spawnTypeCount-- ) {
@@ -300,7 +308,7 @@ function flatChunkGeneratorFactory(
             }
 
             // spawn until our spawn count is high enough
-            while( spawnCount < maxSpawnCount ) {
+            while( !liberated && spawnCount < maxSpawnCount ) {
                 spawn(0);
             }
 
@@ -314,57 +322,78 @@ function flatChunkGeneratorFactory(
                 age: 0, 
                 cleanup: function() {
                 }, 
-                power: 0, 
+                power: power, 
+                friendliness: damage/maxHealth,
                 side: SIDE_BUILDING, 
                 update: function(world: World, diff: number) {
-                    let player = world.getNearest(buildingCx, buildingCy, SIDE_PLAYER);
-                    if( player ) {
-                        nextSpawn -= diff;
-                        if( nextSpawn < 0 ) {
-                            let successfulSpawning = spawn(world.age, player);
-                            if( successfulSpawning ) {
-                                nextSpawn += spawnJumpFrequency;
-                            } else {
-                                if( spawning ) {
-                                    nextSpawn = tileRng(spawnRestFrequency) + spawnJumpFrequency;
-                                }
-                            }
-                            spawning = successfulSpawning;
-                        }
-
-                        // birth 
-                        let positionDiff = vector3Subtract(
-                            [player.x, player.y, player.z], 
-                            [buildingCx, buildingCy, player.z]
-                        );
-                        let distance = vector3Length(positionDiff);
-                        if( distance < CONST_BUILDING_ACTIVATION_DISTANCE && world.allEntities[SIDE_ENEMY].length < CONST_MAX_MONSTERS ) {
-                            nextBirth -= diff;
-                            if( nextBirth < 0 ) {
-                                // find a suitable thing
-                                let wallIndex = tileRng(walls.length);
-                                let wall = walls[wallIndex];
-
-                                if( vector3DotProduct(vector3Divide(positionDiff, distance), wall.normal) > CONST_BUILDING_PLAYER_SPAWN_COS ) {
-                                    let wallSpawns = spawns[wall.id];
-                                    for( let tileId in wallSpawns ) {
-                                        let entity = wallSpawns[tileId]; 
-                                        // don't spawn entites below player (no point)
-                                        if( entity.birthday < world.age && entity.z >= player.z ) {
-                                            delete wallSpawns[tileId];
-                                            world.addEntity(entity);
-                                            setWallLight(wall, parseInt(tileId));
-                                            nextBirth = CONST_BASE_BUILDING_BIRTH_INTERVAL;
-                                            spawnCount--;                
-                                            break;    
-                                        }
+                    if( damage < maxHealth ) {
+                        damage = Math.max(0, damage - diff / 999);
+                        let player = world.getNearest(buildingCx, buildingCy, SIDE_PLAYER);
+                        if( player ) {
+                            nextSpawn -= diff;
+                            if( nextSpawn < 0 ) {
+                                let successfulSpawning = spawn(world.age, player);
+                                if( successfulSpawning ) {
+                                    nextSpawn += spawnJumpFrequency;
+                                } else {
+                                    if( spawning ) {
+                                        nextSpawn = tileRng(spawnRestFrequency) + spawnJumpFrequency;
                                     }
-                                } 
-                            }        
+                                }
+                                spawning = successfulSpawning;
+                            }
+    
+                            // birth 
+                            let positionDiff = vector3Subtract(
+                                [player.x, player.y, player.z], 
+                                [buildingCx, buildingCy, player.z]
+                            );
+                            let distance = vector3Length(positionDiff);
+                            if( distance < CONST_BUILDING_ACTIVATION_DISTANCE && world.allEntities[SIDE_ENEMY].length < CONST_MAX_MONSTERS ) {
+                                nextBirth -= diff;
+                                if( nextBirth < 0 ) {
+                                    // find a suitable thing
+                                    let wallIndex = tileRng(walls.length);
+                                    let wall = walls[wallIndex];
+    
+                                    if( vector3DotProduct(vector3Divide(positionDiff, distance), wall.normal) > CONST_BUILDING_PLAYER_SPAWN_COS ) {
+                                        let wallSpawns = spawns[wall.id];
+                                        for( let tileId in wallSpawns ) {
+                                            let entity = wallSpawns[tileId]; 
+                                            // don't spawn entites below player (no point)
+                                            if( entity.birthday < world.age && entity.z >= player.z ) {
+                                                delete wallSpawns[tileId];
+                                                world.addEntity(entity);
+                                                setWallLight(wall, parseInt(tileId));
+                                                nextBirth = CONST_BASE_BUILDING_BIRTH_INTERVAL;
+                                                spawnCount--;                
+                                                break;    
+                                            }
+                                        }
+                                    } 
+                                }        
+                            } 
                         }
+                    } else {
+                        if( !liberated ) {
+                            // save the fact we converted this building
+                            localStorage.setItem(buildingKey, ''+Date.now());
+                            localStorage.setItem(''+seed, JSON.stringify([buildingCx, buildingCy, buildingZ]))
+                            // turn off all the lights
+                            for(let wallId in walls ) {
+                                let wall = walls[wallId];
+                                wall.gridLighting = [0, 0, 0, 0];                                
+                                wall.fillColor = goodFillColor;
+                            }
+                        }            
                     }
-                    
-
+                    if( previousDamage != damage ) {
+                        // adjust the colours of the grids
+                        let friendliness = damage/maxHealth;
+                        building.friendliness = friendliness;
+                        building.power = friendliness*friendliness*maxHealth/CONST_HEALTH_POWER_RATIO;
+                        previousDamage = damage;
+                    }    
                 }
             }
             entities.push.apply(entities, walls);
@@ -373,13 +402,14 @@ function flatChunkGeneratorFactory(
         } else {
             if( FLAG_SPAWN_RANDOM_MONSTERS && tileRng() < .1 && chunkX > 2 ) {
                 let monsterId = tileRng(CONST_BIG_NUMBER);
-                let r = CONST_BASE_RADIUS;
+                let r = CONST_BASE_RADIUS * tileRng(4);
                 let monster = monsterGenerator(
                     monsterId, 
                     //x + r + rng(chunkWidth - r*2), y + r + rng(chunkHeight - r*2), z + r * 2, 
                     x + CONST_CHUNK_WIDTH/2, y + CONST_CHUNK_HEIGHT/2, z + CONST_WALL_DEPTH, 
-                    r
+                    r * 2
                 );        
+                monster.deathAge = 0;
                 entities.push(monster);    
             }
         }
