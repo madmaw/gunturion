@@ -4,7 +4,8 @@ const SIDE_SCENERY = 0;
 const SIDE_PLAYER = 1;
 const SIDE_ENEMY = 2;
 const SIDE_NEUTRAL = 3;
-const SIDE_BUILDING = 4;
+const SIDE_POWERUPS = 4;
+const SIDE_BUILDING = 5;
 
 const MONSTER_BEHAVIOUR_FLAG_LATERAL_MOVEMENT = 1;
 const MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT = 2;
@@ -63,6 +64,7 @@ interface Monster extends EntityBase, Updatable, Bounded, Rendered {
     previousPosition?: Vector3;
     previousVelocity?: Vector3;
     seed: number;
+    sound?: SoundLoop3D;
 }
 
 interface MonsterBehaviour {
@@ -107,8 +109,9 @@ interface MonsterGenerator {
         x: number, 
         y: number, 
         z: number, 
-        radius?: number, 
-        maxAge?: number
+        radius: number, 
+        maxAge?: number, 
+        onDie?: (world: World) => void
     ): Monster;
 }
 
@@ -255,7 +258,7 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
     }    
 }
 
-function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNumberGeneratorFactory): MonsterGenerator {
+function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNumberGeneratorFactory, soundLoopFactory: SoundLoop3DFactory): MonsterGenerator {
 
     let nextId = 0;
 
@@ -284,19 +287,27 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         x: number, 
         y: number, 
         z: number, 
-        radius?: number, 
-        maxAge?: number
+        radius: number, 
+        maxAge?: number, 
+        onDie?: (world: World) => void, 
+        acceleration?: number
     ): Monster {
 
-        //seed = 262212576; (inert)
-        //seed = -566750790
         let s = seed;
         let rng = rngFactory(seed);
 
+        let shifts = 0;
         function shift(bits: number): number {
             let mask = Math.pow(2, bits) - 1;
             let b = s & mask;
             s>>=bits;
+            if( FLAG_WARN_SHIFT_TOO_FAR ) {
+                shifts += bits;
+                if( shifts > 31 ) {
+                    console.warn('shifting too much', shifts);
+                }
+    
+            }
             return b;
         }   
     
@@ -306,12 +317,10 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         let minPointCount = fib(shift(2)+1) + Math.max(1, ringsBase-1); // 2, 3, 5, 8 + rings
         let horizontalScale = (shift(1)+minPointCount)/(minPointCount+1);
         // TODO we don't have code for the other way 
-        let pointExponentIncrease = shift(2)/3;
-        pointExponentIncrease = 0;
         let equalRingOffset = shift(1);
         //equalRingOffset = 1;
         let allowPointyTip = shift(1);
-        let cycleLength = (shift(5)+32) * 66;  
+        let cycleLength = (shift(5)+32) * 99 * radius;  
         let maxSpikiness = (shift(2)+1)/(14 - rings);
         
         let cycleBase = (shift(4)) * Math.PI * 2/minPointCount;
@@ -329,19 +338,17 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         } 
         let high: number;
         let low: number;
-        let highVariance = .1;
         let lowVariance = .1;
         if( colorPattern == 1 ) {
             // blues are too dark
             // only one
             high = 1;
-            low = .3;
-            highVariance = 0;
+            low = .4;
             lowVariance = .2;
         } else if( colorPattern % 2 ) {
             // two lit
             high = .7;
-            low = .2;
+            low = .3;
         } else {
             // only one
             high = .9;
@@ -366,15 +373,15 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
 
         let ry = shift(1) * Math.PI/2;     
         
-        if( !radius ) {
-            radius = Math.sqrt((shift(4) + 1)/2) * CONST_BASE_RADIUS;
-        }
-
         // reset
         s = seed;
-
+        if( FLAG_WARN_SHIFT_TOO_FAR ) {
+            shifts = 0;
+        }
+        // if the first bit is 0, we generate flying monsters, important for when the player is inaccessible
+        let gravityMultiplier = Math.min(1, shift(2)/2);
+        gravityMultiplier *= gravityMultiplier;
         let restitution = shift(2)/4;
-        let gravityMultiplier = Math.min(1, shift(4)/3);
 
         // generate
         let positions: number[] = [];
@@ -409,12 +416,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         let pointExponent = 0;
         for( let ring=0; ring<rings; ring++ ) {
             ringAngles.push(angleY);
-            ringPointCounts.push(minPointCount * Math.pow(2, pointExponent | 0));
-            if( ring < (rings-2)/2 ) {
-                pointExponent += pointExponentIncrease;
-            } else if (ring > (rings-2)/2) {
-                pointExponent -= pointExponentIncrease;
-            }
+            ringPointCounts.push(minPointCount);
             angleY += Math.PI/ringDiv;
         }
         let ringOffset = 0;
@@ -453,137 +455,135 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
     
                     let nextRingRadius = Math.sin(nextRingAngleY) * radius * horizontalScale/Math.cos(Math.PI/nextRingPointCount);
                     let nextRingZ = Math.cos(nextRingAngleY) * radius;
-                    if( ringPointCount == nextRingPointCount ) {
-                        let nextRingAngleZ = nextRingOffset * Math.PI / nextRingPointCount + point * Math.PI*2/nextRingPointCount;
-                        let nextRingNextAngleZ = nextRingAngleZ + Math.PI*2 / nextRingPointCount;
-                        let nextRingRx = Math.cos(nextRingAngleZ)*nextRingRadius;
-                        let nextRingRy = Math.sin(nextRingAngleZ) * nextRingRadius;
-                        let nextRingNextRx = Math.cos(nextRingNextAngleZ)*nextRingRadius;
-                        let nextRingNextRy = Math.sin(nextRingNextAngleZ) * nextRingRadius;
+                    let nextRingAngleZ = nextRingOffset * Math.PI / nextRingPointCount + point * Math.PI*2/nextRingPointCount;
+                    let nextRingNextAngleZ = nextRingAngleZ + Math.PI*2 / nextRingPointCount;
+                    let nextRingRx = Math.cos(nextRingAngleZ)*nextRingRadius;
+                    let nextRingRy = Math.sin(nextRingAngleZ) * nextRingRadius;
+                    let nextRingNextRx = Math.cos(nextRingNextAngleZ)*nextRingRadius;
+                    let nextRingNextRy = Math.sin(nextRingNextAngleZ) * nextRingRadius;
 
 
-                        let r1 = Math.random()+.5;
-                        let r2 = Math.random()+.5;
+                    let r1 = Math.random()+.5;
+                    let r2 = Math.random()+.5;
 
-                        // let normal1 = vector3GetNormal(
-                        //     rx - nextRingRx, ry - nextRingRy, ringZ - nextRingZ, 
-                        //     rx - nextRx, ry - nextRy, 0
-                        // );
-                        let cx1 = (rx + nextRx + nextRingNextRx) * r1 / 3;
-                        let cy1 = (ry + nextRy + nextRingNextRy) * r1 / 3;
-                        let cz1 = (ringZ * 2 + nextRingZ) * r1 / 3;
-                        // if( vector3DotProduct(normal1, [cx1, cy1, cz1]) < 0 ) {
-                        //     throw 'incorrect normal';
-                        // }
+                    // let normal1 = vector3GetNormal(
+                    //     rx - nextRingRx, ry - nextRingRy, ringZ - nextRingZ, 
+                    //     rx - nextRx, ry - nextRy, 0
+                    // );
+                    let cx1 = (rx + nextRx + nextRingNextRx) * r1 / 3;
+                    let cy1 = (ry + nextRy + nextRingNextRy) * r1 / 3;
+                    let cz1 = (ringZ * 2 + nextRingZ) * r1 / 3;
+                    // if( vector3DotProduct(normal1, [cx1, cy1, cz1]) < 0 ) {
+                    //     throw 'incorrect normal';
+                    // }
 
-                        // let normal2 = vector3GetNormal(
-                        //     nextRingNextRx - nextRingRx, nextRingNextRy - nextRingRy, 0, 
-                        //     nextRx - nextRingRx, nextRy - nextRingRy, ringZ - nextRingZ
-                        // );
-                        let cx2 = (nextRx + nextRingRx + nextRingNextRx) * r2 / 3;
-                        let cy2 = (nextRy + nextRingRy + nextRingNextRy) * r2 / 3;
-                        let cz2 = (ringZ + nextRingZ * 2) * r2 / 3;
-                        // if( vector3DotProduct(normal2, [cx2, cy2, cz2]) < 0 ) {
-                        //     throw 'incorrect normal';
-                        // }
+                    // let normal2 = vector3GetNormal(
+                    //     nextRingNextRx - nextRingRx, nextRingNextRy - nextRingRy, 0, 
+                    //     nextRx - nextRingRx, nextRy - nextRingRy, ringZ - nextRingZ
+                    // );
+                    let cx2 = (nextRx + nextRingRx + nextRingNextRx) * r2 / 3;
+                    let cy2 = (nextRy + nextRingRy + nextRingNextRy) * r2 / 3;
+                    let cz2 = (ringZ + nextRingZ * 2) * r2 / 3;
+                    // if( vector3DotProduct(normal2, [cx2, cy2, cz2]) < 0 ) {
+                    //     throw 'incorrect normal';
+                    // }
 
-                        // normals.push.apply(normals, normal1));
-                        // normals.push.apply(normals, normal1);
-                        // normals.push.apply(normals, normal1);
-                        // normals.push.apply(normals, normal2);
-                        // normals.push.apply(normals, normal2);
-                        // normals.push.apply(normals, normal2);
+                    // normals.push.apply(normals, normal1));
+                    // normals.push.apply(normals, normal1);
+                    // normals.push.apply(normals, normal1);
+                    // normals.push.apply(normals, normal2);
+                    // normals.push.apply(normals, normal2);
+                    // normals.push.apply(normals, normal2);
 
-                        addPoint(nextRx, nextRy, ringZ, nextSpikiness, cx1, cy1, cz1);
-                        addPoint(rx, ry, ringZ, spikiness, cx1, cy1, cz1);
-                        addPoint(nextRingRx, nextRingRy, nextRingZ, nextRingSpikiness, cx1, cy1, cz1);
-                        addPoint(nextRx, nextRy, ringZ, nextSpikiness, cx2, cy2, cz2);
-                        addPoint(nextRingRx, nextRingRy, nextRingZ, nextRingSpikiness, cx2, cy2, cz2);
-                        addPoint(nextRingNextRx, nextRingNextRy, nextRingZ, nextRingNextSpikiness, cx2, cy2, cz2);
+                    addPoint(nextRx, nextRy, ringZ, nextSpikiness, cx1, cy1, cz1);
+                    addPoint(rx, ry, ringZ, spikiness, cx1, cy1, cz1);
+                    addPoint(nextRingRx, nextRingRy, nextRingZ, nextRingSpikiness, cx1, cy1, cz1);
+                    addPoint(nextRx, nextRy, ringZ, nextSpikiness, cx2, cy2, cz2);
+                    addPoint(nextRingRx, nextRingRy, nextRingZ, nextRingSpikiness, cx2, cy2, cz2);
+                    addPoint(nextRingNextRx, nextRingNextRy, nextRingZ, nextRingNextSpikiness, cx2, cy2, cz2);
 
-                        indices.push(
+                    indices.push(
+                        // face 1
+                        l++, l++, l++, 
+                        // face 2
+                        l++, l++, l++
+
+                    );
+                    // positions.push(
+                    //     // face 1
+                    //     nextRx, nextRy, ringZ, nextSpikiness,  
+                    //     rx, ry, ringZ, spikiness,  
+                    //     nextRingRx, nextRingRy, nextRingZ, nextRingSpikiness,  
+                    //     // face 2
+                    //     nextRx, nextRy, ringZ, nextSpikiness,  
+                    //     nextRingRx, nextRingRy, nextRingZ, nextRingSpikiness,  
+                    //     nextRingNextRx, nextRingNextRy, nextRingZ, nextRingNextSpikiness,  
+                    // );
+                    // centerPoints.push(
+                    //     cx1, cy1, cz1, r1,
+                    //     cx1, cy1, cz1, r1, 
+                    //     cx1, cy1, cz1, r1, 
+
+                    //     cx2, cy2, cz2, r2, 
+                    //     cx2, cy2, cz2, r2, 
+                    //     cx2, cy2, cz2, r2, 
+                    // );
+                    if( equalRingOffset ) {
+                        barrycentricCoordinates.push(
                             // face 1
-                            l++, l++, l++, 
+                            1, 0, 0, nextCycleOffset, 
+                            0, 1, 0, cycleOffset, 
+                            0, 0, 1, nextRingCycleOffset, 
                             // face 2
-                            l++, l++, l++
-
-                        );
-                        // positions.push(
-                        //     // face 1
-                        //     nextRx, nextRy, ringZ, nextSpikiness,  
-                        //     rx, ry, ringZ, spikiness,  
-                        //     nextRingRx, nextRingRy, nextRingZ, nextRingSpikiness,  
-                        //     // face 2
-                        //     nextRx, nextRy, ringZ, nextSpikiness,  
-                        //     nextRingRx, nextRingRy, nextRingZ, nextRingSpikiness,  
-                        //     nextRingNextRx, nextRingNextRy, nextRingZ, nextRingNextSpikiness,  
-                        // );
-                        // centerPoints.push(
-                        //     cx1, cy1, cz1, r1,
-                        //     cx1, cy1, cz1, r1, 
-                        //     cx1, cy1, cz1, r1, 
-
-                        //     cx2, cy2, cz2, r2, 
-                        //     cx2, cy2, cz2, r2, 
-                        //     cx2, cy2, cz2, r2, 
-                        // );
-                        if( equalRingOffset ) {
-                            barrycentricCoordinates.push(
-                                // face 1
-                                1, 0, 0, nextCycleOffset, 
-                                0, 1, 0, cycleOffset, 
-                                0, 0, 1, nextRingCycleOffset, 
-                                // face 2
-                                1, 0, 0, nextCycleOffset, 
-                                0, 1, 0, nextRingCycleOffset, 
-                                0, 0, 1, nextRingNextCycleOffset,
-                            );    
-                        } else {
-                            // remove the center line
-                            if( FLAG_CAP_ENDS ) {
-                                if( ring == 0 && !pointyTip ) {
-                                    barrycentricCoordinates.push(
-                                        // face 1
-                                        0, 0, 1, nextCycleOffset, 
-                                        0, 1, 0, cycleOffset, 
-                                        1, 1, 0, nextRingCycleOffset, 
-                                    );    
-                                } else {
-                                    barrycentricCoordinates.push(
-                                        // face 1
-                                        0, 1, 1, nextCycleOffset, 
-                                        1, 1, 0, cycleOffset,
-                                        1, 1, 0, nextRingCycleOffset
-                                    );    
-                                }
-                                if( ring == rings - 2 && !pointyTip ) {
-                                    barrycentricCoordinates.push(
-                                        // face 2
-                                        1, 0, 0, nextCycleOffset,
-                                        0, 1, 1, nextRingCycleOffset,
-                                        0, 0, 1, nextRingNextCycleOffset
-                                    );        
-                                } else {
-                                    barrycentricCoordinates.push(
-                                        // face 2
-                                        1, 1, 0, nextCycleOffset,
-                                        0, 1, 1, nextRingCycleOffset,
-                                        1, 1, 0, nextRingNextCycleOffset
-                                    );        
-                                }
-    
+                            1, 0, 0, nextCycleOffset, 
+                            0, 1, 0, nextRingCycleOffset, 
+                            0, 0, 1, nextRingNextCycleOffset,
+                        );    
+                    } else {
+                        // remove the center line
+                        if( FLAG_CAP_ENDS ) {
+                            if( ring == 0 && !pointyTip ) {
+                                barrycentricCoordinates.push(
+                                    // face 1
+                                    0, 0, 1, nextCycleOffset, 
+                                    0, 1, 0, cycleOffset, 
+                                    1, 1, 0, nextRingCycleOffset, 
+                                );    
                             } else {
                                 barrycentricCoordinates.push(
                                     // face 1
-                                    0, 1, 1, nextCycleOffset,
+                                    0, 1, 1, nextCycleOffset, 
                                     1, 1, 0, cycleOffset,
-                                    1, 1, 0, nextRingCycleOffset,
+                                    1, 1, 0, nextRingCycleOffset
+                                );    
+                            }
+                            if( ring == rings - 2 && !pointyTip ) {
+                                barrycentricCoordinates.push(
+                                    // face 2
+                                    1, 0, 0, nextCycleOffset,
+                                    0, 1, 1, nextRingCycleOffset,
+                                    0, 0, 1, nextRingNextCycleOffset
+                                );        
+                            } else {
+                                barrycentricCoordinates.push(
                                     // face 2
                                     1, 1, 0, nextCycleOffset,
                                     0, 1, 1, nextRingCycleOffset,
                                     1, 1, 0, nextRingNextCycleOffset
                                 );        
                             }
+
+                        } else {
+                            barrycentricCoordinates.push(
+                                // face 1
+                                0, 1, 1, nextCycleOffset,
+                                1, 1, 0, cycleOffset,
+                                1, 1, 0, nextRingCycleOffset,
+                                // face 2
+                                1, 1, 0, nextCycleOffset,
+                                0, 1, 1, nextRingCycleOffset,
+                                1, 1, 0, nextRingNextCycleOffset
+                            );        
                         }
                     } 
 
@@ -678,50 +678,58 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         let behaviours: MonsterBehaviour[] = [];
         let deathBehaviours: MonsterDeathBehaviour[] = [];
         
-        let lateralMover: (targetX: number, targetY: number, maxSpeed: number, diff: number) => void;
+        
         let lateralMovementFlags: number = MONSTER_BEHAVIOUR_FLAG_LATERAL_MOVEMENT;
 
-        if( false && shift(1) ) {
-            // move immedately toward target at max speed
-            lateralMover = function(targetX: number, targetY: number, speed: number) {
-                let dx = targetX - monster.x;
-                let dy = targetY - monster.y;
-                let d = Math.sqrt(dx*dx+dy*dy);
-                if( d ) {
-                    monster.vx = dx/d * speed;
-                    monster.vy = dy/d * speed;    
+        // accelerate toward target
+        if( !acceleration ) {
+            acceleration = rng() * .00003 + .000002;
+        }
+        
+        let lateralMover = function(targetX: number, targetY: number, maxSpeed: number, diff: number, urgency?: number) {
+            let dx = targetX - monster.x;
+            let dy = targetY - monster.y;
+            if( dx || dy ) {
+                let acc = diff * urgency?urgency*acceleration:acceleration;
+
+                let angle = Math.atan2(dy, dx);
+                let sin = Math.sin(angle);
+                let cos = Math.cos(angle);
+
+                let nangle = -angle;
+                let nsin = Math.sin(nangle);
+                let ncos = Math.cos(nangle);
+
+                // rotate existing velocity to match direction
+                let rvx = monster.vx * ncos - monster.vy * nsin;
+                let rvy = monster.vy * ncos + monster.vx * nsin;
+
+                if( rvx > maxSpeed ) {
+                    // attempt to turn into the thing
+                    if( rvy > 0 ) {
+                        rvy -= acc;
+                    } else {
+                        rvy += acc;
+                    }    
+                } else {
+                    // fly at it
+                    rvx += acc;
                 }
-            };
-        } else {
-            // accelerate toward target
-            let acceleration = (shift(5)+1)/99999;
-            lateralMover = function(targetX: number, targetY: number, maxSpeed: number, diff: number) {
-                let dx = targetX - monster.x;
-                let dy = targetY - monster.y;
-                let d = Math.sqrt(dx*dx+dy*dy);
-                if( d ) {
-                    let vx = monster.vx + dx/d * acceleration * diff;
-                    let vy = monster.vy + dy/d * acceleration * diff;
-                    let v = Math.sqrt(vx*vx+vy*vy);
-                    if( v > maxSpeed ) {
-                        vx *= maxSpeed/v;
-                        vy *= maxSpeed/v;
-                    }
-                    monster.vx = vx;
-                    monster.vy = vy;
-                }
+                monster.vx = rvx * cos - rvy * sin;
+                monster.vy = rvy * cos + rvx * sin;
             }
-        } 
+        }
         // else car-like movement (turns for angle)
 
         // seek player
         let seekCount = shift(2);
         while( seekCount-- ) {
-            let speed = (shift(4)+1-Math.random()*.1)/2999;
+            let speed = rng() * .005 + .0003 * (Math.random() + 1); //(shift(4)+1-Math.random()*.1)/2999
+            let radius = rng(9) + CONST_BUILDING_ACTIVATION_DISTANCE;
             behaviours.push(
                 function(world: World, diff: number, takenFlags: number) {
                     if( !(takenFlags & lateralMovementFlags) ) {
-                        let enemy = world.getNearestEnemy(monster);
+                        let enemy = world.getNearestEnemy(monster, radius + world.previousAggro);
                         if( enemy ) {
                             lateralMover(enemy.x, enemy.y, speed, diff);
                             return lateralMovementFlags;
@@ -733,53 +741,49 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         }
         // dodge bullets
         if( shift(1) ) {
-
+            let speed = rng() * .009 + .001;//(shift(4)+1-Math.random()*.1)/1999;
+            let radius = rng(4)+3;
+            let radiusSquared = radius * radius;
+            behaviours.push(
+                function(world: World, diff: number, takenFlags: number) {
+                    if( !(takenFlags & lateralMovementFlags) ) {
+                        let enemy = world.getNearest(monster.x, monster.y, SIDE_NEUTRAL, radius);
+                        if( enemy ) {
+                            let dx = enemy.x - monster.x;
+                            let dy = enemy.y - monster.y;
+                            let dsq = dx * dx + dy * dy;
+                            if( dsq < radiusSquared ) {
+                                lateralMover(enemy.x, enemy.y, speed, diff, -(radiusSquared - dsq)/radiusSquared - 1);
+                                return lateralMovementFlags;    
+                            }
+                        }
+                    }
+                }
+            );    
         }
         // follow sibling
         if( shift(1) ) {
 
         }
 
-        // die and spawn something else
-        if( shift(4) == 1 ) {
-            let spawnSeed = seed & 0xFFFF;
-            let quantity = (shift(1)+1) * radius | 0;
-            // always do it when we die
-            deathBehaviours.push(function(world: World, source: Entity) {
-                let q = quantity;
-                while( q-- && source ) {
-                    let angle = q * Math.PI * 2 / quantity;
-                    let child = monsterGenerator(
-                        spawnSeed, 
-                        monster.x + Math.cos(angle) * CONST_SMALL_NUMBER, monster.y + Math.sin(angle) * CONST_SMALL_NUMBER, monster.z, 
-                        radius*.7
-                    );
-                    world.addEntity(child);    
-                }
-            });
-        }
-
         // move aimlessly
         if( shift(1) ) {
-            let speed = (shift(4)+1-Math.random()*.1)/2999;
+            let speed = rng() * .005 + .0003;//(shift(4)+1-Math.random()*.1)/2999;
             behaviours.push(function(world: World, diff: number, takenFlags: number) {
                 if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_LATERAL_MOVEMENT ) ) {
-                    if( monster.vx<CONST_SMALL_NUMBER && monster.vy<CONST_SMALL_NUMBER ) {
-                        monster.vx = Math.random() - .5;
-                        monster.vy = Math.random() - .5;
+                    if( Math.abs(monster.vx)<CONST_SMALL_NUMBER && Math.abs(monster.vy)<CONST_SMALL_NUMBER ) {
+                        let a = Math.random() * CONST_DIRTY_PI_2;
+                        monster.vx = Math.cos(a) * speed;
+                        monster.vy = Math.sin(a) * speed;
                     }
                     lateralMover(monster.x + monster.vx * 999, monster.y + monster.vy * 999, speed, diff);
                     return lateralMovementFlags;
                 }
             });
         }
-        // attempt to circle player
-        if( shift(1) ) {
-
-        }
         // jump
-        if( !shift(3) ) {
-            let impulse = (shift(4)+1)/999;
+        if( !shift(2) ) {
+            let impulse = rng() * .009 + .004;
             behaviours.push(function(world: World, diff: number, takenFlags: number) {
                 if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT) ) {
                     // have we hit a floor?
@@ -795,6 +799,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                 }
             })
         }
+        
         if( behaviours.length ) {
             let i = behaviours.length;
             while( i-- ) {
@@ -810,27 +815,10 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                 });
             }
 
-            // fly toward player height
-            if( !gravityMultiplier ) {
-                let speed = (shift(4)+1-Math.random()*.1)/9999;
-                behaviours.unshift(function(world: World, diff: number, takenFlags: number) {
-                    if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT ) ) {
-                        let target = world.getNearestEnemy(monster);
-                        if( target ) {
-                            let dz = target.z - monster.z;
-                            if( dz ) {
-                                monster.vz = dz/Math.abs(dz) * Math.min(speed, Math.abs(dz)/diff);
-                                return MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT;        
-                            }                        
-                        }
-                    }
-                });          
-            }  
-            
             // be lazy 
             if( shift(2) == 1 ) {
                 // push to front, will always (probably) be a dependant behavior
-                let deceleration = (shift(2)+1)/5;
+                let deceleration = rng()*.6 + .1;//(shift(2)+1)/5;
                 behaviours.unshift(function(world: World, diff: number, takenFlags: number) {
                     if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_LATERAL_MOVEMENT ) ) {
                         // slow down to 0
@@ -843,11 +831,22 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                 });
             }
 
+            // if the world is not aggro'd
+            if( shift(1) ) {
+                let oldBehaviour = behaviours.splice(0, 1)[0];
+                behaviours.push(function(world: World, diff: number, takenFlags: number) {
+                    if( !world.previousAggro ) {
+                        return oldBehaviour(world, diff, takenFlags);
+                    }
+                })
+            }
+            
+
             // do a previous behavior for a period of time
             if( shift(1) ) {
                 let oldBehaviour = behaviours.splice(0, 1)[0];
-                let repeat = shift(1);
-                let interval = (shift(2)+3)*999;
+                let repeat = rng(2);
+                let interval = rng(3999) + 999;//(shift(2)+3)*999;
                 behaviours.push(function(world: World, diff: number, takenFlags: number) {
                     let step = (monster.age/interval) | 0;
                     
@@ -856,19 +855,17 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                     }
                 })
             }
+            
+            
             // change behavior when close to player
             if( shift(1) ) {
-                let proximity = (shift(2)+1)*9;
+                let proximity = rng(9)+3;//(shift(2)+1)*9;
                 let psq = proximity * proximity;
                 let oldBehaviour = behaviours.splice(0, 1)[0];
                 behaviours.push(function(world: World, diff: number, takenFlags: number) {
-                    let enemy = world.getNearestEnemy(monster);
+                    let enemy = world.getNearestEnemy(monster, proximity);
                     if( enemy ) {
-                        let dx = enemy.x - monster.x;
-                        let dy = enemy.y - monster.y;
-                        if( dx*dx+dy*dy < psq ) {
-                            return oldBehaviour(world, diff, takenFlags);
-                        }
+                        return oldBehaviour(world, diff, takenFlags);
                     }
                 });
                 
@@ -877,8 +874,9 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             if( shift(1) ) {
                 let oldBehaviour = behaviours.splice(0, 1)[0];
                 let above = shift(1);
+                let radius = rng(9)+3;
                 behaviours.push(function(world: World, diff: number, takenFlags: number) {
-                    let enemy = world.getNearestEnemy(monster); 
+                    let enemy = world.getNearestEnemy(monster, radius); 
                     if( enemy ) {
                         let enemyz = enemy.z - enemy.radius;
                         let monsterz = monster.z - monster.radius;
@@ -890,6 +888,53 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
     
             }
         }
+        // fly toward player height
+        if( gravityMultiplier<1 && shift(3) ) {
+            let acceleration = rng() * .0001 + .0001; //(shift(4)+1)/9999;
+            behaviours.unshift(function(world: World, diff: number, takenFlags: number) {
+                if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT ) ) {
+                    let target = world.getNearestEnemy(monster, 9);
+                    if( target ) {
+                        let dz = target.z - monster.z;
+                        if( dz ) {
+                            let time = dz / monster.vz;
+                            let deltaVelocity;
+                            if( monster.vz && acceleration * time * time > Math.abs(dz) ) {
+                                // going too fast
+                                deltaVelocity = -dz/time;
+                            } else {
+                                // going too slow
+                                deltaVelocity = dz/diff;
+                            }
+                            monster.vz += Math.max(-acceleration, Math.min(acceleration, deltaVelocity))*diff;
+                            return MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT;        
+                        }                        
+                    }
+                }
+            });          
+        }  
+        
+        
+        // die and spawn something else
+        if( shift(3) == 1 && radius >= CONST_BASE_RADIUS ) {
+            let spawnSeed = seed >>> 6;
+            let quantity = (rng(2)+1) * radius | 0;
+            // always do it when we die
+            deathBehaviours.push(function(world: World, source: Entity) {
+                let q = quantity;
+                while( q-- && source ) {
+                    let angle = q * Math.PI * 2 / quantity;
+                    let child = monsterGenerator(
+                        spawnSeed, 
+                        monster.x + Math.cos(angle) * CONST_SMALL_NUMBER, monster.y + Math.sin(angle) * CONST_SMALL_NUMBER, monster.z, 
+                        radius*.7
+                    );
+                    world.addEntity(child);    
+                }
+            });
+        }
+
+        
         if( shift(1) ) {
             // rotate to face direction of travel
             behaviours.push(function(world: World, diff: number, takenFlags: number) {
@@ -911,7 +956,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             }
         } else {
             // rotate constantly on Z axis
-            let rz = (shift(4)+1)/999;
+            let rz = rng()*.01 + .001;//(shift(4)+1)/999;
             behaviours.push(function(world: World, diff: number, takenFlags: number) {
                 if(!(takenFlags&MONSTER_BEHAVIOUR_FLAG_ROTATION_Z)) {
                     let v = Math.sqrt(monster.vx*monster.vx + monster.vy*monster.vy);
@@ -922,7 +967,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         } 
 
         if( !maxAge ) {
-            maxAge = (shift(2)+1) * 9999;
+            maxAge = rng(9999)+9999;
         }
 
 
@@ -953,7 +998,12 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                     pushY = 0;
                 } 
             }
-            if( monster.age > maxAge ) {
+            let dx = monster.x - world.cameraX;
+            let dy = monster.y - world.cameraY;
+            let dz = monster.z - world.cameraZ;
+            let dsq = dx * dx + dy * dy + dz * dz;
+            // monsters die faster if they are a long way from the camera and the aggo is high
+            if( maxAge > 0 && monster.age > maxAge - (dsq * world.previousAggro)/9 ) {
                 monster.die(world);
             }
             recentCollisions = [];
@@ -963,6 +1013,12 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         let pushX = 0;
         let pushY = 0;
         let pushCount = 0;
+
+        let soundLoop: SoundLoop3D;
+        if( radius >= CONST_BASE_RADIUS ) {
+            soundLoop = soundLoopFactory(seed, cycleLength, radius * CONST_RADIUS_SOUND_VOLUME_RATIO);
+        }        
+        let health = (radius * radius * 4) | 0;
 
         let monster: Monster ={
             type: 1, 
@@ -979,17 +1035,26 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             update: updater,
             onCollision: function(this: Monster, world: World, entity: Entity) {
                 if( entity.type  ) {
-                    if( !FLAG_TEST_PHYSICS && entity.side > this.side) {
-                        monster.die(world, entity)
+                    if( !FLAG_TEST_PHYSICS && 
+                        (entity.side == SIDE_NEUTRAL && monster.side == SIDE_ENEMY ||
+                         entity.side == SIDE_PLAYER && monster.side == SIDE_POWERUPS 
+                        )
+                    ) {
+                        health--;
                         monster.lastDamageAge = world.age;
+                        if( health<0 ) {
+                            monster.die(world, entity)
+                        }
                     } 
-                    let collisionMonster = entity as Monster;
-                    let dx = monster.x - collisionMonster.x;
-                    let dy = monster.y - collisionMonster.y;
-                    let d = collisionMonster.radius + monster.radius;
-                    pushX += dx/d;
-                    pushY += dy/d;
-                    pushCount++;
+                    if( monster.side == entity.side ) {
+                        let collisionMonster = entity as Monster;
+                        let dx = monster.x - collisionMonster.x;
+                        let dy = monster.y - collisionMonster.y;
+                        let d = collisionMonster.radius + monster.radius;
+                        pushX += dx/d;
+                        pushY += dy/d;
+                        pushCount++;    
+                    }
                 } 
                 recentCollisions.push(entity);
             },
@@ -1006,6 +1071,30 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                     monster.deathAge = monster.age;
                     for( let deathBehaviour of deathBehaviours ) {
                         deathBehaviour(world, deathSource);
+                    }
+                    if( onDie ) {
+                        onDie(world);
+                    }
+                    if( deathSource && deathSource != monster && monster.side == SIDE_ENEMY ) {
+                        // spawn some gems
+                        let r = radius * Math.random();
+                        
+                        while( r > 0 ) {
+                            r--;
+                            let a = r*CONST_DIRTY_PI_2/radius;
+                            let gem = monsterGenerator(
+                                4195348, 
+                                monster.x + Math.cos(a)*CONST_SMALL_NUMBER, monster.y + Math.sin(a)*CONST_SMALL_NUMBER, monster.z, 
+                                .1, 
+                                4999,
+                                null, 
+                                .01
+                            );
+                            gem.side = SIDE_POWERUPS;
+                            gem.lineColor = CONST_FRIENDLY_LINE_COLOR;
+                            gem.fillColor = CONST_FRIENDLY_FILL_COLOR;
+                            world.addEntity(gem);
+                        }
                     }
                 }
             },
@@ -1025,7 +1114,8 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             gravityMultiplier: gravityMultiplier,
             offsetBuffer: offsetBuffer,
             bounds: bounds, 
-            cycleLength: cycleLength
+            cycleLength: cycleLength, 
+            sound: soundLoop
         }
         return monster;
     }

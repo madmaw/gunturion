@@ -5,17 +5,20 @@ window.onload = function() {
 
     let loadingElement = document.getElementById('l');
 
+    let audioContext = new AudioContext();
+
     // set up the webgl context
     let gl = offscreenCanvas.getContext('webgl');
     let seed: number;
-    if( FLAG_WORLD_SEED ) {
-        seed = FLAG_WORLD_SEED;
+    if( CONST_WORLD_SEED ) {
+        seed = CONST_WORLD_SEED;
     } else {
         seed = Math.floor(Math.random() * CONST_BIG_NUMBER);
     }
 
     let rngFactory = sinRandomNumberGeneratorFactory(seed);
-    let monsterGenerator = monsterGeneratorFactory(gl, rngFactory);
+    let soundLoopFactory = webAudioVibratoSoundFactory(audioContext, rngFactory);
+    let monsterGenerator = monsterGeneratorFactory(gl, rngFactory, soundLoopFactory);
     let surfaceGenerator = surfaceGeneratorFactory(gl);
     let chunkGenerator = flatChunkGeneratorFactory(
         seed,
@@ -30,7 +33,8 @@ window.onload = function() {
         offscreenCanvas, 
         gl, 
         chunkGenerator, 
-        monsterGenerator
+        monsterGenerator, 
+        audioContext
     );
 
     let showHome = initShowHome(showPlay);  

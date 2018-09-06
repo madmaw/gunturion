@@ -22,6 +22,7 @@ const V_VERTEX_POSITION = 'vVertexPosition_';
 
 const C_BLUR_ITERATIONS = 7;
 const C_MAX_POWER_SOURCES = 9;
+const C_GRID_LIGHT_MULTIPLIER = '.2';
 
 let vertexShaderSource = `
 precision lowp float;
@@ -45,16 +46,14 @@ varying vec4 ${V_NORMAL_LIGHTING};
 
 void main() {
     vec3 adjustedVertexPosition = ${A_VERTEX_POSITION}.xyz;
-    float directedLighting;
     vec3 vertexNormal;
     if( ${U_GRID_MODE} > 0 ) {
         adjustedVertexPosition += ${A_VERTEX_OFFSET}.w * ${A_VERTEX_POSITION}.xyz * sin(${U_CYCLE_RADIANS} + ${A_GRID_COORDINATE}.w) + ${U_OFFSET_MULTIPLIER} * ${A_VERTEX_OFFSET}.xyz;
         vertexNormal = (${U_MODEL_MATRIX} * vec4(${A_VERTEX_POSITION}.xyz/${A_VERTEX_POSITION}.w, 1.) - ${U_MODEL_MATRIX} * vec4(vec3(0.), 1.)).xyz;
-        
     } else {
         vertexNormal = ${U_SURFACE_NORMAL};
     }
-    directedLighting = dot(vertexNormal, ${U_DIRECTED_LIGHTING_NORMAL}.xyz);
+    float directedLighting = dot(vertexNormal, ${U_DIRECTED_LIGHTING_NORMAL}.xyz);
     vec4 relativeNormal = ${U_VIEW_MATRIX} * vec4(vertexNormal, 1.) - ${U_VIEW_MATRIX} * vec4(vec3(0.),1.);
     
     vec4 vertexPosition = ${U_MODEL_MATRIX} * vec4(adjustedVertexPosition, 1.);
@@ -72,7 +71,6 @@ void main() {
 const U_FILL_COLOR = 'uFillColor_';
 const U_LINE_COLOR = 'uLineColor_';
 const U_LINE_WIDTH = 'uLineWidth_';
-const U_VISIBLE_DISTANCE = 'uVisibleDistance_';
 const U_CAMERA_LIGHT = 'uCameraLight_';
 const U_AMBIENT_LIGHT = 'uAmbientLight_';
 const U_GRID_DIMENSION= 'uGridDimension_';
@@ -90,7 +88,6 @@ precision lowp float;
 uniform vec3 ${U_FILL_COLOR};
 uniform vec3 ${U_LINE_COLOR};
 uniform float ${U_LINE_WIDTH};
-uniform float ${U_VISIBLE_DISTANCE};
 uniform vec2 ${U_CAMERA_LIGHT};
 uniform float ${U_AMBIENT_LIGHT};
 uniform sampler2D ${U_PREVIOUS};
@@ -123,10 +120,9 @@ void main() {
     float distanceSquared = ${V_RELATIVE_POSITION}.x*${V_RELATIVE_POSITION}.x+${V_RELATIVE_POSITION}.y*${V_RELATIVE_POSITION}.y+${V_RELATIVE_POSITION}.z*${V_RELATIVE_POSITION}.z;
     float distance = sqrt(distanceSquared);
     vec3 relativeNormal = ${V_RELATIVE_POSITION}/distance;
-    float visibleDistanceSquared = ${U_VISIBLE_DISTANCE} * ${U_VISIBLE_DISTANCE};
     float fogginess = 0.;
-    if( distance < ${U_VISIBLE_DISTANCE} ) {
-        fogginess = clamp((visibleDistanceSquared-distanceSquared) / visibleDistanceSquared, 0., 1.);
+    if( distance < ${CONST_VISIBLE_DISTANCE}. ) {
+        fogginess = clamp((${CONST_VISIBLE_DISTANCE_SQUARED}.-distanceSquared) / ${CONST_VISIBLE_DISTANCE_SQUARED}., 0., 1.);
     }
     vec3 gridColor = vec3(0.);
     float gridPower = 0.;
@@ -146,15 +142,15 @@ void main() {
     if( gridPower > 0. ) {
         gridColor /= gridPower;
     }
-    float gridLighting = ${V_NORMAL_LIGHTING}.w * (1. - min((${V_VERTEX_POSITION}.z - (${V_VERTEX_POSITION}.x - ${U_DIRECTED_LIGHTING_RANGE}.x)*${U_DIRECTED_LIGHTING_RANGE}.y - ${U_DIRECTED_LIGHTING_RANGE}.z)/${U_DIRECTED_LIGHTING_RANGE}.w, 1.));
-    float pointLighting = clamp((${U_CAMERA_LIGHT}.x-distance) / ${U_CAMERA_LIGHT}.x, 0., 1.) * -dot(relativeNormal,${V_NORMAL_LIGHTING}.xyz) * ${U_CAMERA_LIGHT}.y;
+    float gridLighting = ${C_GRID_LIGHT_MULTIPLIER}*(1. - min((${V_VERTEX_POSITION}.z - (${V_VERTEX_POSITION}.x - ${U_DIRECTED_LIGHTING_RANGE}.x)*${U_DIRECTED_LIGHTING_RANGE}.y - ${U_DIRECTED_LIGHTING_RANGE}.z)/${U_DIRECTED_LIGHTING_RANGE}.w, 1.));
+    float pointLighting = clamp(1.-distance/${U_CAMERA_LIGHT}.x, 0., 1.) * -dot(relativeNormal,${V_NORMAL_LIGHTING}.xyz) * ${U_CAMERA_LIGHT}.y;
     float lighting = pointLighting + ${U_AMBIENT_LIGHT} + ${V_NORMAL_LIGHTING}.w;
     float tileness = 1.;
     vec3 fillColor;
     vec3 lineColor;
     if( ${U_GRID_MODE} > 0 ) {
         vec3 d = fwidth(${V_GRID_COORDINATE});
-        vec3 a3 = smoothstep(vec3(0.0), d*max(1., ${U_LINE_WIDTH} * (1. - distance/${U_VISIBLE_DISTANCE})), ${V_GRID_COORDINATE});
+        vec3 a3 = smoothstep(vec3(0.0), d*max(1., ${U_LINE_WIDTH} * (1. - distance/${CONST_VISIBLE_DISTANCE}.)), ${V_GRID_COORDINATE});
         tileness = min(min(a3.x, a3.y), a3.z);
         fillColor = ${U_FILL_COLOR};
         lineColor = ${U_LINE_COLOR};
@@ -163,10 +159,10 @@ void main() {
         float gy = floor(${V_GRID_COORDINATE}.y);
         float mn = min(${V_GRID_COORDINATE}.x - gx, (${V_GRID_COORDINATE}.y - gy)*${V_GRID_COORDINATE}.z);
         float mx = max(${V_GRID_COORDINATE}.x - gx, (${V_GRID_COORDINATE}.y - gy)*${V_GRID_COORDINATE}.z);
-        float lineWidth = 1./60.; 
+        float lineWidth = (1. + gridPower*gridPower)/30.; 
         if( mn < lineWidth || mx > (1. - lineWidth) ) {
             float m = min(mn, 1. - mx);
-            tileness = m / lineWidth * (1. - max(0., distance/${U_VISIBLE_DISTANCE}))*(1. - lineWidth) + lineWidth;
+            tileness = m / lineWidth * (1. - max(0., distance/${CONST_VISIBLE_DISTANCE}.))*(1. - lineWidth) + lineWidth;
             tileness *= tileness * tileness;
         }    
         float bit = gy*${U_GRID_DIMENSION}.x+gx;
@@ -213,7 +209,8 @@ function initShowPlay(
     offscreenCanvas: HTMLCanvasElement,
     gl: WebGLRenderingContext,
     chunkGenerator: ChunkGenerator, 
-    monsterGenerator: MonsterGenerator
+    monsterGenerator: MonsterGenerator, 
+    audioContext: AudioContext
 ): ShowPlay {
     let canvas = document.getElementById('b') as HTMLCanvasElement;
     let context = canvas.getContext('2d');
@@ -231,11 +228,15 @@ function initShowPlay(
     let canvasHeight: number;
     let aspectRatio: number;
 
+    let shootSound = webAudioBoomSoundFactory(audioContext, .3);
+    let dieSound = webAudioBoomSoundFactory(audioContext, 1);
+
     // NOTE: regenerate should be a boolean really, but onresize passes some truthy value
     let resize = function(regenerate?: any) {
 
         canvasWidth = window.innerWidth;
         canvasHeight = window.innerHeight;
+        
 
         offscreenCanvas.width = canvas.width = canvasWidth;
         offscreenCanvas.height = canvas.height = canvasHeight;
@@ -253,12 +254,13 @@ function initShowPlay(
             targetTexture = webglCreateTexture(gl, canvasWidth, canvasHeight);    
             frameBuffer = gl.createFramebuffer();
             depthBuffer = gl.createRenderbuffer();
+
+            gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer);
+            gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+        
+            gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, canvasWidth, canvasHeight);
+            gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
         }
-        gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer);
-        gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
-    
-        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, canvasWidth, canvasHeight);
-        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
 
         aspectRatio = canvasWidth/canvasHeight;
         projectionMatrix = matrix4Perspective(
@@ -276,11 +278,11 @@ function initShowPlay(
         if( FLAG_BACKGROUND ) {
             // (p)re-render the background
 
-            let skyGradient = context.createLinearGradient(0, 0, 0, canvasHeight/2);
-            skyGradient.addColorStop(0, CONST_SKY_COLOR_HIGH_RGB);
-            skyGradient.addColorStop(1, CONST_SKY_COLOR_LOW_RGB);
-            context.fillStyle = skyGradient;
-            context.fillRect(0, 0, canvasWidth, canvasHeight);
+            // let skyGradient = context.createLinearGradient(0, 0, 0, canvasHeight/2);
+            // skyGradient.addColorStop(0, CONST_SKY_COLOR_HIGH_RGB);
+            // skyGradient.addColorStop(1, CONST_SKY_COLOR_LOW_RGB);
+            // context.fillStyle = skyGradient;
+            // context.fillRect(0, 0, canvasWidth, canvasHeight);
             let rng = rngFactory(0);
             let i = 5;
             while( --i ) {
@@ -348,7 +350,6 @@ function initShowPlay(
     let uFillColor = gl.getUniformLocation(shaderProgram, U_FILL_COLOR);
     let uLineColor = gl.getUniformLocation(shaderProgram, U_LINE_COLOR);
     let uLineWidth = gl.getUniformLocation(shaderProgram, U_LINE_WIDTH);
-    let uVisibleDistance = gl.getUniformLocation(shaderProgram, U_VISIBLE_DISTANCE);
     let uCameraLight = gl.getUniformLocation(shaderProgram, U_CAMERA_LIGHT);
     let uAmbientLight = gl.getUniformLocation(shaderProgram, U_AMBIENT_LIGHT);
     let uPrevious = gl.getUniformLocation(shaderProgram, U_PREVIOUS);
@@ -364,12 +365,10 @@ function initShowPlay(
     let uPowerSources = gl.getUniformLocation(shaderProgram, U_POWER_SOURCES);
     let uPowerSourceCount = gl.getUniformLocation(shaderProgram, U_POWER_SOURCE_COUNT);
 
-    gl.uniform1f(uVisibleDistance, CONST_VISIBLE_DISTANCE);
-    gl.uniform4fv(uDirectedLightingNormal, CONST_DIRECTIONAL_LIGHT);
-    
-    return function() {
+    let play = function() {
         let animationFrameHandle: number;
         let destroy = function() {
+            window.cancelAnimationFrame(animationFrameHandle);
             canvas.className = '';
             if( FLAG_CLEANUP_EVENT_HANDLERS_ON_DESTROY ) {
                 window.onresize = null;
@@ -378,7 +377,12 @@ function initShowPlay(
                 canvas.onmousedown = null;
                 canvas.onmouseup = null;
             }
-            window.cancelAnimationFrame(animationFrameHandle);
+            for(let side in world.allEntities ) {
+                let sideEntities = world.allEntities[side];
+                for( let entity of sideEntities ) {
+                    entity.cleanup();
+                }
+            }
             resize();
         }
     
@@ -405,9 +409,10 @@ function initShowPlay(
 
         let displayMessageTime: number;
         let displayMessage: string;
-        let say = function(message: string) {
-            if( FLAG_SPEECH ) {
-                let ut = new SpeechSynthesisUtterance(message);
+        let say = function(message: string, pronunciation?: string) {
+            if( FLAG_SPEECH && window.speechSynthesis ) {
+                let ut = new SpeechSynthesisUtterance(pronunciation?pronunciation:message);
+                ut.rate = .8;
                 speechSynthesis.speak(ut);
                 ut.onend = function() {
                     displayMessageTime = world.age - CONST_MESSAGE_TIME;
@@ -431,7 +436,13 @@ function initShowPlay(
         canvas.onmousedown = function(e: MouseEvent) {
             if( !e.button ) {
                 if( document.pointerLockElement == canvas ) {
-                    shooting = world.age;
+                    if( player.deathAge ) {
+                        // request restart
+                        destroy();
+                        play();
+                    } else {
+                        shooting = world.age;
+                    }
                 } else {
                     canvas.requestPointerLock();
                 }
@@ -444,7 +455,7 @@ function initShowPlay(
             if( document.pointerLockElement == canvas ) {
                 
                 dx -= e.movementX;
-                dy = Math.min(canvasHeight/4, Math.max(-canvasHeight/4, dy - e.movementY));    
+                dy = Math.min(canvasHeight/2, Math.max(-canvasHeight/2, dy - e.movementY));    
             }
         }
         window.onkeydown = function(e: KeyboardEvent) {
@@ -469,16 +480,17 @@ function initShowPlay(
         let walkDistance = 0;
         // TODO can remove once we get our model under control
         let player = monsterGenerator(
-            25, 
+            26, 
             pos[0], pos[1], pos[2] + 2, 
             .49
         );
         player.ry = 0;
+        player.sound = null;
         // end TODO
         //player.visible = 0;
         player.side = SIDE_PLAYER;
-        player.lineColor = [.7, .7, .3];
-        player.fillColor = [.2, .2, 0];
+        player.lineColor = CONST_FRIENDLY_LINE_COLOR;
+        player.fillColor = CONST_FRIENDLY_FILL_COLOR;
         // make it look like a gun
         let scale = .15;
         player.die = function() {
@@ -493,20 +505,31 @@ function initShowPlay(
         ]);
         //player.specialMatrix = matrix4Translate(2, 0, -player.radius/2);
         let lastShot = 0;
-        let lastPower = 0;
+        let batteryLevel = CONST_STARTING_BATTERY;
+        let maxBattery = Math.pow(batteryLevel, CONST_BATTERY_LEVEL_EXPONENT);
+        let battery = maxBattery;
+        let lastBattery = battery;
         let lastFloor = 0;
+        let lastPower = 0;
+        let hasBeenOffline: number;
         if( FLAG_ALLOW_JUMPING ) {
             player.onCollision = function(this: Monster, world: World, other: Entity) {
                 let result: number;
                 if( other.type ) {
-                    if( !FLAG_TEST_PHYSICS ) {
-                        this.die(world, other);
+                    if( other.side == SIDE_POWERUPS ) {
+                        batteryLevel ++;
+                        maxBattery = Math.pow(batteryLevel, CONST_BATTERY_LEVEL_EXPONENT);
+                        battery ++;
+                    } else {
+                        if( !FLAG_TEST_PHYSICS ) {
+                            this.die(world, other);
+                        }    
                     }
                 } else {
                     let surface = other as Surface;
                     // you can probably jump
                     if( surface.normal[2]>0) {
-                        lastFloor = this.age;
+                        lastFloor = player.age;
                     }
                 }
                 return result;
@@ -563,32 +586,41 @@ function initShowPlay(
 
             // work out our gun power
             let power = 0;
-            // buildings are already sorted
-            let buildings = world.allEntities[SIDE_BUILDING] as Building[];
-            let i = 0;
-            while( i < buildings.length ) {
-                let building = buildings[i++];
-                let buildingX = building.chunkX * CONST_CHUNK_WIDTH + CONST_CHUNK_WIDTH/2;
-                let buildingY = building.chunkY * CONST_CHUNK_HEIGHT + CONST_CHUNK_HEIGHT/2;
-                let dx = player.x - buildingX;
-                let dy = player.y - buildingY;
-                let dsq = dx * dx + dy * dy;
-                let extendedBuildingPower = building.power * CONST_BUILDING_POWER_EXTRA; 
-                if ( dsq < extendedBuildingPower * extendedBuildingPower ) {
-                    let d = extendedBuildingPower - Math.sqrt(dsq);
-                    power += d*d/(CONST_NORMAL_POWER_DISTANCE*extendedBuildingPower);
+            if( lastFloor + CONST_CHARGE_FLOOR_DIFF > player.age ) {
+                // buildings are already sorted
+                let buildings = world.allEntities[SIDE_BUILDING] as Building[];
+                let i = 0;
+                /* from shader...
+                vec4 powerSource = ${U_POWER_SOURCES}[i];
+                vec2 powerSourceDelta = powerSource.xy - ${V_VERTEX_POSITION}.xy;
+                float d = sqrt(powerSourceDelta.x*powerSourceDelta.x + powerSourceDelta.y*powerSourceDelta.y);
+                if( d < powerSource.z ) {
+                    float p = d/powerSource.z;
+                    float v = 1. - p*p;
+                    gridPower += v;
+                    gridColor += vec3(.5, powerSource.w, .5 - powerSource.w) * v;
                 }
+                */
+                while( i < buildings.length ) {
+                    let building = buildings[i++];
+                    let buildingX = building.chunkX * CONST_CHUNK_WIDTH + CONST_CHUNK_WIDTH/2;
+                    let buildingY = building.chunkY * CONST_CHUNK_HEIGHT + CONST_CHUNK_HEIGHT/2;
+                    let dx = player.x - buildingX;
+                    let dy = player.y - buildingY;
+                    let dsq = dx * dx + dy * dy;
+                    if ( dsq < building.power * building.power ) {
+                        let p = Math.sqrt(dsq)/building.power;
+                        let v = 1 - p*p;
+                        power += v;
+                    }
+                }
+                battery = Math.min(maxBattery, battery + power/amt);
             }
-            if( lastPower && !power && window.speechSynthesis ) {
-                // issue a warning
-                say("WEAPONS OFFLINE");
-            } else if( !lastPower && power ) {
-                say('WEAPONS ONLINE');
-            }    
             lastPower = power;
-            if( shooting && power ) {
-                let shotInterval = CONST_BASE_BULLET_INTERVAL + CONST_DELTA_BULLET_INTERVAL * (1 - Math.sqrt(power));
+            if( shooting && battery >= CONST_BASE_BULLET_COST ) {
+                let shotInterval = CONST_BASE_BULLET_INTERVAL;
                 if( player.age > lastShot + shotInterval ) {
+                    battery -= CONST_BASE_BULLET_COST;
                     let sinX = Math.sin(player.rx);
                     let cosX = Math.cos(player.rx);
                     if( lastShot + shotInterval + amt > player.age ) {
@@ -605,7 +637,9 @@ function initShowPlay(
                         CONST_BULLET_RADIUS, 
                         CONST_BULLET_LIFESPAN
                     );
+                    shootSound(shotInterval/999);
                     bullet.side = SIDE_NEUTRAL;
+                    bullet.sound = null;
                     bullet.onCollision = function(this: Monster, world: World, withEntity: Entity) {
                         if( !FLAG_TEST_PHYSICS ) {
                             bullet.die(world, withEntity);  
@@ -629,9 +663,21 @@ function initShowPlay(
                     world.addEntity(bullet);
                 }
             }
+            if( lastBattery >= CONST_BASE_BULLET_COST && battery < CONST_BASE_BULLET_COST && !power ) {
+                // issue a warning
+                say("WEAPONS OFFLINE", 'WEAPONS OFF LINE');
+                hasBeenOffline = 1;
+            } else if( lastBattery < CONST_BASE_BULLET_COST && battery >= CONST_BASE_BULLET_COST && hasBeenOffline ) {
+                say('WEAPONS ONLINE');
+                hasBeenOffline = 0;
+            } 
+            lastBattery = battery;
         }
         world.addEntity(player);
 
+        let lightingAngle: number;
+        let lightingSin: number;
+        let lightingCos: number;
 
         let render = function(projectionMatrix: Matrix4, viewMatrix: Matrix4, previousViewMatrix: Matrix4) {
             // Clear the color buffer with specified clear color
@@ -640,13 +686,14 @@ function initShowPlay(
             let buildings = world.allEntities[SIDE_BUILDING] as Building[];
             let powerSources: number[] = [];
             let powerSourceCount = Math.min(buildings.length, C_MAX_POWER_SOURCES);
+            let powerBoost = Math.sin(world.age/399)/9 + 1;
             for( let i=0; i<powerSourceCount; i++ ) {
                 let building = buildings[i] as Building;
                 powerSources.push(
                     building.chunkX * CONST_CHUNK_WIDTH + CONST_CHUNK_WIDTH/2, 
                     building.chunkY * CONST_CHUNK_HEIGHT + CONST_CHUNK_HEIGHT/2, 
-                    Math.sqrt(building.power) * 2 + CONST_CHUNK_DIMENSION_MAX, 
-                    building.friendliness * .5
+                    Math.sqrt(building.power) * powerBoost + CONST_CHUNK_DIMENSION_MAX, 
+                    building.friendliness/2
                 );
             }
 
@@ -659,11 +706,17 @@ function initShowPlay(
             gl.uniformMatrix4fv(uProjectionMatrix, false, projectionMatrix);
             gl.uniformMatrix4fv(uViewMatrix, false, viewMatrix);
             gl.uniformMatrix4fv(uPreviousViewMatrix, false, previousViewMatrix);
-            
+
+            // work out lighting
+            lightingAngle = Math.min(Math.PI/2, world.cameraX/CONST_FINISH_X_DIV_PI);
+            lightingSin = Math.sin(lightingAngle);
+            lightingCos = Math.cos(lightingAngle);
+            gl.uniform4f(uDirectedLightingNormal, lightingCos, 0, lightingSin, lightingSin * CONST_DIRECTIONAL_LIGHT_INTENSITY);
+
 
             if( FLAG_MUZZLE_FLASH ) {
-                let shotLightBonus = Math.max(0, lastShot + CONST_MUZZEL_FLASH_DURATION - world.age)/CONST_MUZZEL_FLASH_DURATION;
-                gl.uniform2f(uCameraLight, CONST_CAMERA_LIGHT_DISTANCE + shotLightBonus, CONST_CAMERA_LIGHT_INTENSITY + shotLightBonus*.2);    
+                let shotLightBonus = Math.max(0, lastShot + CONST_MUZZLE_FLASH_DURATION - world.age)/CONST_MUZZLE_FLASH_DURATION;
+                gl.uniform2f(uCameraLight, CONST_CAMERA_LIGHT_DISTANCE + shotLightBonus, CONST_CAMERA_LIGHT_INTENSITY + shotLightBonus);    
             } else {
                 gl.uniform2f(uCameraLight, CONST_CAMERA_LIGHT_DISTANCE, CONST_CAMERA_LIGHT_INTENSITY);    
             }
@@ -791,6 +844,10 @@ function initShowPlay(
                 player.ry, 
                 player.rz - Math.PI/2
             );
+            let listener = audioContext.listener;
+            listener.setPosition(player.x, player.y, player.z);       
+            listener.setOrientation(Math.cos(player.rz), Math.sin(player.rz), 0, 0, 0, 1);
+                 
 
             // adjust for walk animation
             let walkTranslationMatrix: Matrix4;
@@ -833,24 +890,52 @@ function initShowPlay(
             context.globalCompositeOperation = 'destination-over';
             // draw in a background
             if( FLAG_BACKGROUND ) {
+                let lightingMatrix = matrix4Multiply(projectionMatrix, rotationMatrixX);
                 let screenPosition = vector3TransformMatrix4(
                     0, 
-                    CONST_VISIBLE_DISTANCE, 
+                    1, 
                     0, 
-                    matrix4Multiply(projectionMatrix, rotationMatrixX)
+                    lightingMatrix
                 );
                 // only need y from screen position
-                let backgroundY = (screenPosition[1] * canvasHeight)/2 + 99;
-                let backgroundX = (world.cameraRotationZ * canvasWidth / (CONST_FOV * aspectRatio)) % canvasWidth - canvasWidth;
+                
+                let backgroundY = (screenPosition[1] * canvasHeight)/2;
+                let east = (world.cameraRotationZ + Math.PI)%(Math.PI*2);
+                if( east < 0 ) {
+                    east += Math.PI*2;
+                }
+                let eastX = east * canvasWidth / (CONST_FOV * aspectRatio);
+                let backgroundX = eastX % canvasWidth - canvasWidth;
 
                 while( backgroundX < canvasWidth ) 
                 {
                     context.drawImage(skybox, backgroundX, backgroundY - canvasHeight/2);
                     backgroundX += canvasWidth;
                 }
-    
-                context.fillStyle = CONST_SKY_COLOR_HIGH_RGB;
-                context.fillRect(0, 0, canvasWidth, canvasHeight);
+                if( FLAG_BACKGROUND_TARGET ) {
+                    let skyballPosition = vector3TransformMatrix4(
+                        0, 
+                        lightingCos, 
+                        lightingSin, 
+                        lightingMatrix
+                    );
+                    
+                    let dangle = player.rx - lightingAngle;
+                    // I don't know why I need to adjust for tan, I thought the perspective matrix did this already
+                    let skyballY = (skyballPosition[1] * (1+Math.abs(Math.tan(dangle))) * canvasHeight + canvasHeight)/2;
+                    let skyGradient = context.createRadialGradient(eastX, skyballY, canvasHeight/9, eastX, skyballY, canvasWidth/2);
+                    let adj = Math.sin(world.age/999)/99;
+                    skyGradient.addColorStop(.1 + adj, '#000');
+                    skyGradient.addColorStop(.12 + adj, '#f9f');
+                    skyGradient.addColorStop(.14 + adj, CONST_SKY_COLOR_BALL_RGB);
+                    skyGradient.addColorStop(1, CONST_SKY_COLOR_HIGH_RGB);
+                    context.fillStyle = skyGradient;
+                } else {
+                    context.fillStyle = CONST_SKY_COLOR_HIGH_RGB;
+                }
+                context.fillRect(0, 0, canvasWidth, backgroundY + canvasHeight/2);
+                context.fillStyle = CONST_FOG_COLOR_RGB;
+                context.fillRect(0, Math.max(0, backgroundY + canvasHeight/2 - 1), canvasWidth, canvasHeight);
                 
             } else {
                 context.fillStyle = CONST_FOG_COLOR_RGB;
@@ -858,8 +943,8 @@ function initShowPlay(
             }
 
             context.globalCompositeOperation = 'source-over';
+            context.textBaseline = 'top';
             if( FLAG_SHOW_FPS && diff ) {
-                context.textAlign = 'left';
                 context.font = `12px sans-serif`;
                 context.fillStyle = '#f00';
                 frames ++;
@@ -868,33 +953,41 @@ function initShowPlay(
 
             context.fillStyle = context.strokeStyle = '#fff';
             context.globalAlpha = Math.abs(Math.sin(world.age/99))/2+.5;
+            context.font = `${CONST_STATUS_HEIGHT}px sans-serif`;
             if( displayMessageTime && world.age - displayMessageTime < CONST_MESSAGE_TIME ) {
                 context.textAlign = 'center';
-                context.font = `${CONST_STATUS_HEIGHT}px sans-serif`;
                 context.fillText(displayMessage, canvasWidth/2, canvasHeight/2);
             }
+            context.textAlign = 'left';
             if( !player.deathAge ) {
-                if( lastPower ) {
-                    context.globalAlpha = 1;
-                    let fillStyle;                
-                    if( lastPower < .2 ) {
-                        fillStyle = 'red';
-                    }  else if( lastPower < .5 ) {
-                        fillStyle = '#ff0';
-                    } else {
-                        fillStyle = '#6f6';
-                    }
-                    context.fillStyle = fillStyle;
-                } else {
-                    context.strokeStyle = 'red';
+                let fillStyle;                
+                if( battery < CONST_BATTERY_WARNING ) {
+                    fillStyle = 'red';
+                }  else {
+                    fillStyle = '#4f4';
                 }
-                // show grid power
-                context.fillRect(canvasWidth - CONST_STATUS_HEIGHT * 3, CONST_STATUS_HEIGHT, CONST_STATUS_HEIGHT * 2 * lastPower, CONST_STATUS_HEIGHT);
-                context.strokeRect(canvasWidth - CONST_STATUS_HEIGHT * 3, CONST_STATUS_HEIGHT, CONST_STATUS_HEIGHT * 2, CONST_STATUS_HEIGHT);    
+                context.fillStyle = fillStyle;
+                if( battery < CONST_BASE_BULLET_COST ) {
+                    context.strokeStyle = 'red';
+                } else {
+                    context.globalAlpha = 1;
+                }
+                // show battery
+                context.fillRect(canvasWidth - maxBattery - CONST_STATUS_HEIGHT, CONST_STATUS_HEIGHT, battery, CONST_STATUS_HEIGHT);
+                context.strokeRect(canvasWidth - maxBattery - CONST_STATUS_HEIGHT, CONST_STATUS_HEIGHT, maxBattery, CONST_STATUS_HEIGHT);
+                let powerSymbolWidth = context.measureText(CONST_BATTERY_SYMBOL).width;
+                let p = lastPower;
+                let x = canvasWidth - maxBattery - CONST_STATUS_HEIGHT - 9;
+                while( p > 0 ) {
+                    x-= powerSymbolWidth;
+                    context.fillText(CONST_BATTERY_SYMBOL, x, CONST_STATUS_HEIGHT);
+                    p--;
+                }
             }
             context.globalAlpha = 1;
         }   
         update(0);     
     
     }
+    return play;
 }

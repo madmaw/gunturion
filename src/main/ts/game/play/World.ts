@@ -23,6 +23,9 @@ class World {
     ticks: number;
     bonusMillis: number;
 
+    public aggro: number;
+    public previousAggro: number;
+
     private chunkDimensions: Vector2;
 
     constructor(
@@ -42,7 +45,9 @@ class World {
             0: [], 
             1: [], 
             2: [], 
-            3: []
+            3: [], 
+            4: [], 
+            5: []
         };
         this.age = 0;
         this.ticks = 0;
@@ -52,11 +57,11 @@ class World {
     }
 
     public update(amt: number) {
-        if( FLAG_FIXED_STEP ) {
+        if( CONST_FIXED_STEP ) {
             let totalAmt = amt + this.bonusMillis;
-            while( totalAmt >= FLAG_FIXED_STEP ) {
-                this.doUpdate(FLAG_FIXED_STEP);
-                totalAmt -= FLAG_FIXED_STEP;
+            while( totalAmt >= CONST_FIXED_STEP ) {
+                this.doUpdate(CONST_FIXED_STEP);
+                totalAmt -= CONST_FIXED_STEP;
             }
             this.bonusMillis = totalAmt;    
         } else {
@@ -65,6 +70,8 @@ class World {
     }
 
     public doUpdate(amt: number) {
+        this.previousAggro = this.aggro;
+        this.aggro = 0;
         this.age += amt;
         this.ticks++;
         let i=this.updatableEntities.length;
@@ -417,8 +424,8 @@ class World {
                         if( minCollisionTime != null ) {
                             if( FLAG_DETECT_MULTIPLE_COLLISIONS ) {
                                 let id = (minCollisionEntity as Bounded).id
-                                if( id == previousCollisionEntityId ) {
-                                    console.warn('already just collided with this thing', updatableEntity, minCollisionEntity);
+                                if( id == previousCollisionEntityId && minCollisionEntity.type == 0 ) {
+                                    console.warn('already just collided with this surface', updatableEntity, minCollisionEntity);
                                 }
                                 previousCollisionEntityId = id;
                             }
@@ -453,6 +460,18 @@ class World {
                         } else {
                             if( !updatableMonster.deathAge ) {
                                 this.addEntityPosition(updatableMonster);
+                                // check that we are near the camera
+                                if( updatableMonster.sound ) {
+                                    let dx = this.cameraX - updatableMonster.x;
+                                    let dy = this.cameraY - updatableMonster.y;
+                                    let dz = this.cameraZ - updatableMonster.z;
+                                    let dsq = dx*dx+dy*dy+dz*dz;
+                                    if( dsq < CONST_MAX_SOUND_RADIUS_SQUARED * updatableMonster.radius * updatableMonster.radius * CONST_RADIUS_SOUND_VOLUME_RATIO_SQUARED) {
+                                        updatableMonster.sound.start(updatableMonster.x, updatableMonster.y, updatableMonster.z);                                        
+                                    } else {
+                                        updatableMonster.sound.stop();
+                                    }    
+                                }
                             }                            
                             done = true;
                         }
@@ -566,6 +585,9 @@ class World {
     public removeEntity(entity: Entity) {
         if( entity.type ) {
             arrayRemove(this.updatableEntities, entity);
+            if( entity.type == 1 && entity.sound ) {
+                entity.sound.stop();
+            }
         }
         let sideEntities = this.allEntities[entity.side];
         if( sideEntities ) {
@@ -597,16 +619,19 @@ class World {
         });
     }
 
-    public getNearestEnemy(to: Monster): Monster {
+    public getNearestEnemy(to: Monster, searchRadius?: number): Monster {
         let targetSide = to.side%2 + 1;
-        return this.getNearest(to.x, to.y, targetSide);
+        return this.getNearest(to.x, to.y, targetSide, searchRadius);
     } 
 
-    public getNearest(x: number, y: number, targetSide: number): Monster {
+    public getNearest(x: number, y: number, targetSide: number, searchRadius?: number): Monster {        
         let targets = this.allEntities[targetSide];
+        if( !searchRadius ) {
+            searchRadius = CONST_ACTIVE_CHUNKS_DIMENSION_MIN * CONST_CHUNK_DIMENSION_MAX;
+        }
         let result: Monster;
+        let minDistanceSquared = searchRadius * searchRadius;
         if( targets.length ) {
-            let minDistanceSquared: number;
             for( let target of targets ) {
                 let targetMonster = target as Monster;
                 let dx = x - targetMonster.x;
@@ -614,6 +639,7 @@ class World {
                 let dsq = dx*dx+dy*dy;
                 if( dsq < minDistanceSquared || !minDistanceSquared ) {
                     result = targetMonster;
+                    minDistanceSquared = dsq;
                     if( dsq < 1 ) {
                         // close enough
                         break;
