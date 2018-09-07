@@ -46,7 +46,7 @@ uniform float ${U_CYCLE_RADIANS};
 uniform float ${U_OFFSET_MULTIPLIER};
 varying vec3 ${V_VERTEX_POSITION};
 varying vec3 ${V_RELATIVE_POSITION};
-varying vec3 ${V_GRID_COORDINATE};
+varying vec4 ${V_GRID_COORDINATE};
 varying vec4 ${V_SCREEN_COORDINATE};
 varying vec4 ${V_NORMAL_LIGHTING};
 void main(){
@@ -57,7 +57,7 @@ if(${U_GRID_MODE}>0){
   ${L_VERTEX_NORMAL}=(${U_MODEL_MATRIX}*vec4(${A_VERTEX_POSITION}.xyz/${A_VERTEX_POSITION}.w,1.)-${U_MODEL_MATRIX}*vec4(vec3(0.), 1.)).xyz;}
 vec4 ${L_VERTEX_POSITION}=${U_MODEL_MATRIX}*vec4(${L_ADJUSTED_VERTEX_POSITION},1.);
 vec4 ${L_RELATIVE_VERTEX_POSITION}=${U_VIEW_MATRIX}*${L_VERTEX_POSITION};
-${V_GRID_COORDINATE}=${A_GRID_COORDINATE}.xyz;
+${V_GRID_COORDINATE}=${A_GRID_COORDINATE};
 ${V_RELATIVE_POSITION}=${L_RELATIVE_VERTEX_POSITION}.xyz;    
 ${V_SCREEN_COORDINATE}=${U_PROJECTION_MATRIX}*${U_PREVIOUS_VIEW_MATRIX}*${L_VERTEX_POSITION};
 ${V_NORMAL_LIGHTING}=vec4(mat3(${U_VIEW_MATRIX})*${L_VERTEX_NORMAL}-mat3(${U_VIEW_MATRIX})*vec3(0.),(dot(${L_VERTEX_NORMAL},${U_DIRECTED_LIGHTING_NORMAL}.xyz)+1.)*${U_DIRECTED_LIGHTING_NORMAL}.w);
@@ -117,7 +117,7 @@ uniform vec4 ${U_POWER_SOURCES}[${C_MAX_POWER_SOURCES}];
 uniform lowp int ${U_POWER_SOURCE_COUNT};
 varying vec3 ${V_VERTEX_POSITION};
 varying vec3 ${V_RELATIVE_POSITION};
-varying vec3 ${V_GRID_COORDINATE};
+varying vec4 ${V_GRID_COORDINATE};
 varying vec4 ${V_SCREEN_COORDINATE};
 varying vec4 ${V_NORMAL_LIGHTING};
 
@@ -163,15 +163,15 @@ void main(){
     vec3 ${L_FILL_COLOR};
     vec3 ${L_LINE_COLOR};
     if(${U_GRID_MODE}>0){
-        vec3 ${L_FWIDTH}=smoothstep(vec3(0.0),fwidth(${V_GRID_COORDINATE})*max(1.,${U_LINE_WIDTH}*(1.-${L_DISTANCE}/${CONST_VISIBLE_DISTANCE}.)),${V_GRID_COORDINATE});
+        vec3 ${L_FWIDTH}=smoothstep(vec3(0.0),fwidth(${V_GRID_COORDINATE}.xyz)*max(1.,${U_LINE_WIDTH}*(1.-${L_DISTANCE}/${CONST_VISIBLE_DISTANCE}.)),${V_GRID_COORDINATE}.xyz);
         ${L_TILENESS}=min(min(${L_FWIDTH}.x,${L_FWIDTH}.y),${L_FWIDTH}.z);
         ${L_FILL_COLOR}=${U_FILL_COLOR};
         ${L_LINE_COLOR}=${U_LINE_COLOR};
     } else { 
-        vec3 ${L_FLOOR_GRID_COORDINATE}=floor(${V_GRID_COORDINATE});
+        vec4 ${L_FLOOR_GRID_COORDINATE}=floor(${V_GRID_COORDINATE});
         float mn=min(${V_GRID_COORDINATE}.x-${L_FLOOR_GRID_COORDINATE}.x,(${V_GRID_COORDINATE}.y-${L_FLOOR_GRID_COORDINATE}.y)*${V_GRID_COORDINATE}.z);
         float mx=max(${V_GRID_COORDINATE}.x-${L_FLOOR_GRID_COORDINATE}.x,1.-(1.-${V_GRID_COORDINATE}.y+${L_FLOOR_GRID_COORDINATE}.y)*${V_GRID_COORDINATE}.z);
-        float lineWidth = (1. + ${L_GRID_POWER}*${L_GRID_POWER})/50.; 
+        float lineWidth = (1. + ${L_GRID_POWER}*${L_GRID_POWER})*${V_GRID_COORDINATE}.w; 
         if( mn < lineWidth || mx > (1. - lineWidth) ) {
             float m = min(mn, 1. - mx);
             ${L_TILENESS} = m / lineWidth * (1. - max(0., ${L_DISTANCE}/${CONST_VISIBLE_DISTANCE}.))*(1. - lineWidth) + lineWidth;

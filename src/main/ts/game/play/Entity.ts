@@ -168,11 +168,13 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
         let lineY = height/lineScaleY;
         // assume we are always rotating only one axis by 90 degrees
         let lineAspectRatio = rotateX?lineScaleX/lineScaleY:lineScaleY/lineScaleX;
+        // assume the min is the one we're trying to match
+        let lineWidth = CONST_GRID_LINE_WIDTH / Math.min(lineScaleX, lineScaleY);
         let gridCoordinates = [
-            0, 0, lineAspectRatio, 0,  
-            lineX, 0, lineAspectRatio, 0, 
-            lineX, lineY, lineAspectRatio, 0, 
-            0, lineY, lineAspectRatio, 0
+            0, 0, lineAspectRatio, lineWidth,  
+            lineX, 0, lineAspectRatio, lineWidth, 
+            lineX, lineY, lineAspectRatio, lineWidth, 
+            0, lineY, lineAspectRatio, lineWidth
         ];
         let gridCoordinateBuffer = webglCreateArrayBuffer(gl, gridCoordinates);
 

@@ -77,3 +77,4 @@ const CONST_BLUR = .5;
 // amount to boost colours 1 = none 2 = double
 const CONST_BLOOM = 1.2;
 const CONST_BATTERY_BOOST_ANIMATION_DURATION = 300;
+const CONST_GRID_LINE_WIDTH = .02;
