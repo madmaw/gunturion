@@ -10,12 +10,13 @@ function initShowHome(showGame: ShowPlay) {
         homeDiv.className = '';
     }
 
-    return function() {
+    let f = function() {
         homeDiv.className = 'v';
 
         playButton.onclick = function() {
             destroy();
-            showGame();   
+            showGame(f);   
         }
     }
+    return f;
 }

@@ -1,4 +1,4 @@
-function webAudioVibratoSoundFactory(
+function webAudioVibratoSoundLoop3DFactory(
     audioContext: AudioContext, 
     rngFactory: RandomNumberGeneratorFactory
 ) {
@@ -41,7 +41,7 @@ function webAudioVibratoSoundFactory(
                     vibratoGain.gain.value = -999;
 
                     panner = audioContext.createPanner();
-                    panner.refDistance = CONST_MAX_SOUND_RADIUS * size;
+                    panner.refDistance = CONST_MAX_SOUND_RADIUS_SQRT * size;
                     panner.distanceModel = 'exponential';
                     //panner.rolloffFactor = 1;
             

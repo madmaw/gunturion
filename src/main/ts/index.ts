@@ -17,8 +17,7 @@ window.onload = function() {
     }
 
     let rngFactory = sinRandomNumberGeneratorFactory(seed);
-    let soundLoopFactory = webAudioVibratoSoundFactory(audioContext, rngFactory);
-    let monsterGenerator = monsterGeneratorFactory(gl, rngFactory, soundLoopFactory);
+    let monsterGenerator = monsterGeneratorFactory(gl, rngFactory, audioContext);
     let surfaceGenerator = surfaceGeneratorFactory(gl);
     let chunkGenerator = flatChunkGeneratorFactory(
         seed,
@@ -36,11 +35,15 @@ window.onload = function() {
         monsterGenerator, 
         audioContext
     );
-
-    let showHome = initShowHome(showPlay);  
-
-    //showHome();
-    showPlay();
+    if( FLAG_HOME_SCREEN ) {
+        let showHome = initShowHome(showPlay);  
+        showHome();
+    } else {
+        let f = function() {
+            showPlay(f);
+        }
+        f();
+    }
 
     //initTest();
     

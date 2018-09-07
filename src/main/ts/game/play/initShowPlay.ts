@@ -1,31 +1,37 @@
 ///<reference path="../../constants.ts"/>
 
-const A_VERTEX_POSITION = 'aVertexPosition_';
-const A_VERTEX_OFFSET = 'aVertexOffset_';
-const A_GRID_COORDINATE = 'aGridCoordinate_';
+const A_VERTEX_POSITION = FLAG_SHORTEN_GLSL_VARIABLES?'a':'aVertexPosition_';
+const A_VERTEX_OFFSET = FLAG_SHORTEN_GLSL_VARIABLES?'b':'aVertexOffset_';
+const A_GRID_COORDINATE = FLAG_SHORTEN_GLSL_VARIABLES?'c':'aGridCoordinate_';
 
-const U_MODEL_MATRIX = 'uModelMatrix_';
-const U_VIEW_MATRIX = 'uViewMatrix_';
-const U_PROJECTION_MATRIX = 'uProjectionMatrix_';
-const U_PREVIOUS_VIEW_MATRIX = 'uPreviousViewMatrix_';
-const U_GRID_MODE = 'uGridMode_';
-const U_CYCLE_RADIANS = 'uCycleRadians_';
-const U_OFFSET_MULTIPLIER = 'uOffsetMultiplier_';
-const U_SURFACE_NORMAL = 'uSurfaceNormal_';
-const U_DIRECTED_LIGHTING_NORMAL = 'uDirectedLightingNormal_';
-const U_DIRECTED_LIGHTING_RANGE = 'uDirectedLightingRange_';
-const V_RELATIVE_POSITION = 'vRelativePosition_';
-const V_GRID_COORDINATE = 'vGridCoordinate_';
-const V_SCREEN_COORDINATE = 'vScreenCoordinate_';
-const V_NORMAL_LIGHTING = 'vNormalLighting_';
-const V_VERTEX_POSITION = 'vVertexPosition_';
+const U_MODEL_MATRIX = FLAG_SHORTEN_GLSL_VARIABLES?'d':'uModelMatrix_';
+const U_VIEW_MATRIX = FLAG_SHORTEN_GLSL_VARIABLES?'e':'uViewMatrix_';
+const U_PROJECTION_MATRIX = FLAG_SHORTEN_GLSL_VARIABLES?'f':'uProjectionMatrix_';
+const U_PREVIOUS_VIEW_MATRIX = FLAG_SHORTEN_GLSL_VARIABLES?'g':'uPreviousViewMatrix_';
+const U_GRID_MODE = FLAG_SHORTEN_GLSL_VARIABLES?'h':'uGridMode_';
+const U_CYCLE_RADIANS = FLAG_SHORTEN_GLSL_VARIABLES?'j':'uCycleRadians_';
+const U_OFFSET_MULTIPLIER = FLAG_SHORTEN_GLSL_VARIABLES?'k':'uOffsetMultiplier_';
+const U_SURFACE_NORMAL = FLAG_SHORTEN_GLSL_VARIABLES?'l':'uSurfaceNormal_';
+const U_DIRECTED_LIGHTING_NORMAL = FLAG_SHORTEN_GLSL_VARIABLES?'m':'uDirectedLightingNormal_';
+const U_DIRECTED_LIGHTING_RANGE = FLAG_SHORTEN_GLSL_VARIABLES?'n':'uDirectedLightingRange_';
+const V_RELATIVE_POSITION = FLAG_SHORTEN_GLSL_VARIABLES?'o':'vRelativePosition_';
+const V_GRID_COORDINATE = FLAG_SHORTEN_GLSL_VARIABLES?'p':'vGridCoordinate_';
+const V_SCREEN_COORDINATE = FLAG_SHORTEN_GLSL_VARIABLES?'q':'vScreenCoordinate_';
+const V_NORMAL_LIGHTING = FLAG_SHORTEN_GLSL_VARIABLES?'r':'vNormalLighting_';
+const V_VERTEX_POSITION = FLAG_SHORTEN_GLSL_VARIABLES?'s':'vVertexPosition_';
 
-const C_BLUR_ITERATIONS = 7;
+const C_BLUR_ITERATIONS = FLAG_BLOOM?7:0;
 const C_MAX_POWER_SOURCES = 9;
-const C_GRID_LIGHT_MULTIPLIER = '.2';
+const C_GRID_LIGHT_MULTIPLIER = '.4';
 
-let vertexShaderSource = `
-precision lowp float;
+const L_ADJUSTED_VERTEX_POSITION = FLAG_SHORTEN_GLSL_VARIABLES?'t':'adjustedVertePosition_';
+const L_VERTEX_NORMAL = FLAG_SHORTEN_GLSL_VARIABLES?'u':'vertexNormal_';
+const L_VERTEX_POSITION = FLAG_SHORTEN_GLSL_VARIABLES?'v':'vertexPosition_';
+const L_RELATIVE_VERTEX_POSITION = FLAG_SHORTEN_GLSL_VARIABLES?'w':'relativeVertexPosition_';
+
+
+let vertexShaderSource = 
+`precision lowp float;
 attribute vec4 ${A_VERTEX_POSITION};
 attribute vec4 ${A_VERTEX_OFFSET};
 attribute vec4 ${A_GRID_COORDINATE};
@@ -43,52 +49,63 @@ varying vec3 ${V_RELATIVE_POSITION};
 varying vec3 ${V_GRID_COORDINATE};
 varying vec4 ${V_SCREEN_COORDINATE};
 varying vec4 ${V_NORMAL_LIGHTING};
+void main(){
+vec3 ${L_ADJUSTED_VERTEX_POSITION}=${A_VERTEX_POSITION}.xyz;
+vec3 ${L_VERTEX_NORMAL}=${U_SURFACE_NORMAL};
+if(${U_GRID_MODE}>0){
+  ${L_ADJUSTED_VERTEX_POSITION}+=${A_VERTEX_OFFSET}.w*${A_VERTEX_POSITION}.xyz*sin(${U_CYCLE_RADIANS}+${A_GRID_COORDINATE}.w)+${U_OFFSET_MULTIPLIER}*${A_VERTEX_OFFSET}.xyz;
+  ${L_VERTEX_NORMAL}=(${U_MODEL_MATRIX}*vec4(${A_VERTEX_POSITION}.xyz/${A_VERTEX_POSITION}.w,1.)-${U_MODEL_MATRIX}*vec4(vec3(0.), 1.)).xyz;}
+vec4 ${L_VERTEX_POSITION}=${U_MODEL_MATRIX}*vec4(${L_ADJUSTED_VERTEX_POSITION},1.);
+vec4 ${L_RELATIVE_VERTEX_POSITION}=${U_VIEW_MATRIX}*${L_VERTEX_POSITION};
+${V_GRID_COORDINATE}=${A_GRID_COORDINATE}.xyz;
+${V_RELATIVE_POSITION}=${L_RELATIVE_VERTEX_POSITION}.xyz;    
+${V_SCREEN_COORDINATE}=${U_PROJECTION_MATRIX}*${U_PREVIOUS_VIEW_MATRIX}*${L_VERTEX_POSITION};
+${V_NORMAL_LIGHTING}=vec4(mat3(${U_VIEW_MATRIX})*${L_VERTEX_NORMAL}-mat3(${U_VIEW_MATRIX})*vec3(0.),(dot(${L_VERTEX_NORMAL},${U_DIRECTED_LIGHTING_NORMAL}.xyz)+1.)*${U_DIRECTED_LIGHTING_NORMAL}.w);
+${V_VERTEX_POSITION}=${L_VERTEX_POSITION}.xyz;
+gl_Position=${U_PROJECTION_MATRIX}*${L_RELATIVE_VERTEX_POSITION};}`;
 
-void main() {
-    vec3 adjustedVertexPosition = ${A_VERTEX_POSITION}.xyz;
-    vec3 vertexNormal;
-    if( ${U_GRID_MODE} > 0 ) {
-        adjustedVertexPosition += ${A_VERTEX_OFFSET}.w * ${A_VERTEX_POSITION}.xyz * sin(${U_CYCLE_RADIANS} + ${A_GRID_COORDINATE}.w) + ${U_OFFSET_MULTIPLIER} * ${A_VERTEX_OFFSET}.xyz;
-        vertexNormal = (${U_MODEL_MATRIX} * vec4(${A_VERTEX_POSITION}.xyz/${A_VERTEX_POSITION}.w, 1.) - ${U_MODEL_MATRIX} * vec4(vec3(0.), 1.)).xyz;
-    } else {
-        vertexNormal = ${U_SURFACE_NORMAL};
-    }
-    float directedLighting = dot(vertexNormal, ${U_DIRECTED_LIGHTING_NORMAL}.xyz);
-    vec4 relativeNormal = ${U_VIEW_MATRIX} * vec4(vertexNormal, 1.) - ${U_VIEW_MATRIX} * vec4(vec3(0.),1.);
-    
-    vec4 vertexPosition = ${U_MODEL_MATRIX} * vec4(adjustedVertexPosition, 1.);
-    vec4 relativeVertexPosition = ${U_VIEW_MATRIX} * vertexPosition;
-    vec4 screenPosition = ${U_PROJECTION_MATRIX} * relativeVertexPosition;
-    ${V_GRID_COORDINATE} = ${A_GRID_COORDINATE}.xyz;
-    ${V_RELATIVE_POSITION} = relativeVertexPosition.xyz;    
-    ${V_SCREEN_COORDINATE} = ${U_PROJECTION_MATRIX} * ${U_PREVIOUS_VIEW_MATRIX} * vertexPosition;
-    ${V_NORMAL_LIGHTING} = vec4(relativeNormal.xyz, (directedLighting + 1.) * ${U_DIRECTED_LIGHTING_NORMAL}.w);
-    ${V_VERTEX_POSITION} = vertexPosition.xyz;
-    gl_Position = screenPosition;
-}
-`;
+const U_FILL_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'t':'uFillColor_';
+const U_LINE_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'u':'uLineColor_';
+const U_LINE_WIDTH = FLAG_SHORTEN_GLSL_VARIABLES?'v':'uLineWidth_';
+const U_CAMERA_LIGHT = FLAG_SHORTEN_GLSL_VARIABLES?'w':'uCameraLight_';
+const U_AMBIENT_LIGHT = FLAG_SHORTEN_GLSL_VARIABLES?'x':'uAmbientLight_';
+const U_GRID_DIMENSION= FLAG_SHORTEN_GLSL_VARIABLES?'y':'uGridDimension_';
+const U_GRID_LIGHTING = FLAG_SHORTEN_GLSL_VARIABLES?'z':'uGridLighting_';
+const U_PREVIOUS = FLAG_SHORTEN_GLSL_VARIABLES?'A':'uPrevious_';
+const U_PREVIOUS_DIMENSION = FLAG_SHORTEN_GLSL_VARIABLES?'B':'uPreviousDimension_';
+const U_POWER_SOURCES = FLAG_SHORTEN_GLSL_VARIABLES?'C':'uPowerSources_';
+const U_POWER_SOURCE_COUNT = FLAG_SHORTEN_GLSL_VARIABLES?'D':'uPowerSourceCount_';
 
-const U_FILL_COLOR = 'uFillColor_';
-const U_LINE_COLOR = 'uLineColor_';
-const U_LINE_WIDTH = 'uLineWidth_';
-const U_CAMERA_LIGHT = 'uCameraLight_';
-const U_AMBIENT_LIGHT = 'uAmbientLight_';
-const U_GRID_DIMENSION= 'uGridDimension_';
-const U_GRID_LIGHTING = 'uGridLighting_';
-const U_PREVIOUS = 'uPrevious_';
-const U_PREVIOUS_DIMENSION = 'uPreviousDimension_';
-const U_POWER_SOURCES = 'uPowerSources_';
-const U_POWER_SOURCE_COUNT = 'uPowerSourceCount_';
+const F_GET_SAMPLE_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'E':'getSampleColor_';
+const FP_SCREEN_COORDINATE = FLAG_SHORTEN_GLSL_VARIABLES?'F':'screenCoordinate_';
+const FP_DIV = FLAG_SHORTEN_GLSL_VARIABLES?'G':'div_';
+const FP_COUNT = FLAG_SHORTEN_GLSL_VARIABLES?'H':'count_';
+const L_PREVIOUS_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'I':'previousColor_';
+const L_MULT = FLAG_SHORTEN_GLSL_VARIABLES?'J':'mult_';
+const L_DISTANCE_SQUARED = FLAG_SHORTEN_GLSL_VARIABLES?'K':'distanceSquared_';
+const L_DISTANCE = FLAG_SHORTEN_GLSL_VARIABLES?'L':'distance_';
+const L_FOGGINESS = FLAG_SHORTEN_GLSL_VARIABLES?'M':'fogginess_';
+const L_GRID_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'N':'gridColor_';
+const L_GRID_POWER = FLAG_SHORTEN_GLSL_VARIABLES?'O':'gridPower_';
+const L_POWER_SOURCE = FLAG_SHORTEN_GLSL_VARIABLES?'P':'powerSource_';
+const L_POWER_SOURCE_DELTA = FLAG_SHORTEN_GLSL_VARIABLES?'Q':'powerSourceDelta_';
+const L_POWER_SOURCE_DISTANCE = FLAG_SHORTEN_GLSL_VARIABLES?'R':'powerSourceDistance_';
+const L_POWER = FLAG_SHORTEN_GLSL_VARIABLES?'S':'p_';
+const L_POWER_SQUARED = FLAG_SHORTEN_GLSL_VARIABLES?'T':'psq_';
+const L_LIGHTING = FLAG_SHORTEN_GLSL_VARIABLES?'U':'lighting_';
+const L_TILENESS = FLAG_SHORTEN_GLSL_VARIABLES?'V':'tileness_';
+const L_FILL_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'W':'fillColor_';
+const L_LINE_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'X':'lineColor_';
+const L_FWIDTH = FLAG_SHORTEN_GLSL_VARIABLES?'Y':'a3_';
+const L_FLOOR_GRID_COORDINATE = FLAG_SHORTEN_GLSL_VARIABLES?'Z':'floorGridCoordinate_';
 
-let fragmentShaderSource = `
-#extension GL_OES_standard_derivatives : enable
+let fragmentShaderSource = 
+`#extension GL_OES_standard_derivatives:enable
 precision lowp float;
-
-
 uniform vec3 ${U_FILL_COLOR};
 uniform vec3 ${U_LINE_COLOR};
 uniform float ${U_LINE_WIDTH};
-uniform vec2 ${U_CAMERA_LIGHT};
+uniform vec4 ${U_CAMERA_LIGHT};
 uniform float ${U_AMBIENT_LIGHT};
 uniform sampler2D ${U_PREVIOUS};
 uniform vec2 ${U_PREVIOUS_DIMENSION};
@@ -104,95 +121,90 @@ varying vec3 ${V_GRID_COORDINATE};
 varying vec4 ${V_SCREEN_COORDINATE};
 varying vec4 ${V_NORMAL_LIGHTING};
 
-vec4 getSampleColor(vec2 screenCoordinate, int div, inout float count) {
-    vec4 previousColor = texture2D(${U_PREVIOUS}, screenCoordinate);
-    if( previousColor.a > .1 ) {
-        float mult = ${C_BLUR_ITERATIONS}./float(${C_BLUR_ITERATIONS} - div); 
-        count += mult;
-        return previousColor * mult;
-    } else {
+vec4 ${F_GET_SAMPLE_COLOR}(vec2 ${FP_SCREEN_COORDINATE},int ${FP_DIV},inout float ${FP_COUNT}){
+    vec4 ${L_PREVIOUS_COLOR}=texture2D(${U_PREVIOUS},${FP_SCREEN_COORDINATE});
+    if(${L_PREVIOUS_COLOR}.a>.1){
+        float ${L_MULT}=${C_BLUR_ITERATIONS}./float(${C_BLUR_ITERATIONS}-${FP_DIV}); 
+        ${FP_COUNT}+=${L_MULT};
+        return ${L_PREVIOUS_COLOR}*${L_MULT};
+    }else{
         return vec4(0.);
     }
 }
 
-void main() {
+void main(){
     // TODO can shorten this for sure
-    float distanceSquared = ${V_RELATIVE_POSITION}.x*${V_RELATIVE_POSITION}.x+${V_RELATIVE_POSITION}.y*${V_RELATIVE_POSITION}.y+${V_RELATIVE_POSITION}.z*${V_RELATIVE_POSITION}.z;
-    float distance = sqrt(distanceSquared);
-    vec3 relativeNormal = ${V_RELATIVE_POSITION}/distance;
-    float fogginess = 0.;
-    if( distance < ${CONST_VISIBLE_DISTANCE}. ) {
-        fogginess = clamp((${CONST_VISIBLE_DISTANCE_SQUARED}.-distanceSquared) / ${CONST_VISIBLE_DISTANCE_SQUARED}., 0., 1.);
+    float ${L_DISTANCE_SQUARED}=${V_RELATIVE_POSITION}.x*${V_RELATIVE_POSITION}.x+${V_RELATIVE_POSITION}.y*${V_RELATIVE_POSITION}.y+${V_RELATIVE_POSITION}.z*${V_RELATIVE_POSITION}.z;
+    float ${L_DISTANCE}=sqrt(${L_DISTANCE_SQUARED});
+    float ${L_FOGGINESS}=0.;
+    if(${L_DISTANCE} < ${CONST_VISIBLE_DISTANCE}. ) {
+        ${L_FOGGINESS}=clamp((${CONST_VISIBLE_DISTANCE_SQUARED}.-${L_DISTANCE_SQUARED}) / ${CONST_VISIBLE_DISTANCE_SQUARED}., 0., 1.);
     }
-    vec3 gridColor = vec3(0.);
-    float gridPower = 0.;
-    for( int i=0; i<${C_MAX_POWER_SOURCES}; i++ ) {
-        if( i < ${U_POWER_SOURCE_COUNT} ) {
-            vec4 powerSource = ${U_POWER_SOURCES}[i];
-            vec2 powerSourceDelta = powerSource.xy - ${V_VERTEX_POSITION}.xy;
-            float d = sqrt(powerSourceDelta.x*powerSourceDelta.x + powerSourceDelta.y*powerSourceDelta.y);
-            if( d < powerSource.z ) {
-                float p = d/powerSource.z;
-                float v = 1. - p*p;
-                gridPower += v;
-                gridColor += vec3(.5, powerSource.w, .5 - powerSource.w) * v;
+    vec3 ${L_GRID_COLOR}=vec3(0.);
+    float ${L_GRID_POWER}=0.;
+    for(int i=0;i<${C_MAX_POWER_SOURCES};i++){
+        if(i<${U_POWER_SOURCE_COUNT}){
+            vec4 ${L_POWER_SOURCE}=${U_POWER_SOURCES}[i];
+            vec2 ${L_POWER_SOURCE_DELTA} = ${L_POWER_SOURCE}.xy - ${V_VERTEX_POSITION}.xy;
+            float ${L_POWER_SOURCE_DISTANCE}=sqrt(${L_POWER_SOURCE_DELTA}.x*${L_POWER_SOURCE_DELTA}.x+${L_POWER_SOURCE_DELTA}.y*${L_POWER_SOURCE_DELTA}.y);
+            if(${L_POWER_SOURCE_DISTANCE}<${L_POWER_SOURCE}.z){
+                float ${L_POWER}=${L_POWER_SOURCE_DISTANCE}/${L_POWER_SOURCE}.z;
+                float ${L_POWER_SQUARED}=1.-${L_POWER}*${L_POWER};
+                ${L_GRID_POWER}+=${L_POWER_SQUARED};
+                ${L_GRID_COLOR}+=vec3(.5,${L_POWER_SOURCE}.w,.5-${L_POWER_SOURCE}.w)*${L_POWER_SQUARED};
             }
         }
     }
-    if( gridPower > 0. ) {
-        gridColor /= gridPower;
+    if(${L_GRID_POWER}>0.){
+        ${L_GRID_COLOR}/=${L_GRID_POWER};
     }
-    float gridLighting = ${C_GRID_LIGHT_MULTIPLIER}*(1. - min((${V_VERTEX_POSITION}.z - (${V_VERTEX_POSITION}.x - ${U_DIRECTED_LIGHTING_RANGE}.x)*${U_DIRECTED_LIGHTING_RANGE}.y - ${U_DIRECTED_LIGHTING_RANGE}.z)/${U_DIRECTED_LIGHTING_RANGE}.w, 1.));
-    float pointLighting = clamp(1.-distance/${U_CAMERA_LIGHT}.x, 0., 1.) * -dot(relativeNormal,${V_NORMAL_LIGHTING}.xyz) * ${U_CAMERA_LIGHT}.y;
-    float lighting = pointLighting + ${U_AMBIENT_LIGHT} + ${V_NORMAL_LIGHTING}.w;
-    float tileness = 1.;
-    vec3 fillColor;
-    vec3 lineColor;
-    if( ${U_GRID_MODE} > 0 ) {
-        vec3 d = fwidth(${V_GRID_COORDINATE});
-        vec3 a3 = smoothstep(vec3(0.0), d*max(1., ${U_LINE_WIDTH} * (1. - distance/${CONST_VISIBLE_DISTANCE}.)), ${V_GRID_COORDINATE});
-        tileness = min(min(a3.x, a3.y), a3.z);
-        fillColor = ${U_FILL_COLOR};
-        lineColor = ${U_LINE_COLOR};
-    } else {
-        float gx = floor(${V_GRID_COORDINATE}.x);
-        float gy = floor(${V_GRID_COORDINATE}.y);
-        float mn = min(${V_GRID_COORDINATE}.x - gx, (${V_GRID_COORDINATE}.y - gy)*${V_GRID_COORDINATE}.z);
-        float mx = max(${V_GRID_COORDINATE}.x - gx, (${V_GRID_COORDINATE}.y - gy)*${V_GRID_COORDINATE}.z);
-        float lineWidth = (1. + gridPower*gridPower)/30.; 
+    float ${L_LIGHTING}=clamp(1.-${L_DISTANCE}/${U_CAMERA_LIGHT}.x,0.,1.)*-dot(${V_RELATIVE_POSITION}/${L_DISTANCE},${V_NORMAL_LIGHTING}.xyz)*${U_CAMERA_LIGHT}.y+${U_AMBIENT_LIGHT}+${V_NORMAL_LIGHTING}.w;
+    float ${L_TILENESS}=1.;
+    vec3 ${L_FILL_COLOR};
+    vec3 ${L_LINE_COLOR};
+    if(${U_GRID_MODE}>0){
+        vec3 ${L_FWIDTH}=smoothstep(vec3(0.0),fwidth(${V_GRID_COORDINATE})*max(1.,${U_LINE_WIDTH}*(1.-${L_DISTANCE}/${CONST_VISIBLE_DISTANCE}.)),${V_GRID_COORDINATE});
+        ${L_TILENESS}=min(min(${L_FWIDTH}.x,${L_FWIDTH}.y),${L_FWIDTH}.z);
+        ${L_FILL_COLOR}=${U_FILL_COLOR};
+        ${L_LINE_COLOR}=${U_LINE_COLOR};
+    } else { 
+        vec3 ${L_FLOOR_GRID_COORDINATE}=floor(${V_GRID_COORDINATE});
+        float mn=min(${V_GRID_COORDINATE}.x-${L_FLOOR_GRID_COORDINATE}.x,(${V_GRID_COORDINATE}.y-${L_FLOOR_GRID_COORDINATE}.y)*${V_GRID_COORDINATE}.z);
+        float mx=max(${V_GRID_COORDINATE}.x-${L_FLOOR_GRID_COORDINATE}.x,1.-(1.-${V_GRID_COORDINATE}.y+${L_FLOOR_GRID_COORDINATE}.y)*${V_GRID_COORDINATE}.z);
+        float lineWidth = (1. + ${L_GRID_POWER}*${L_GRID_POWER})/50.; 
         if( mn < lineWidth || mx > (1. - lineWidth) ) {
             float m = min(mn, 1. - mx);
-            tileness = m / lineWidth * (1. - max(0., distance/${CONST_VISIBLE_DISTANCE}.))*(1. - lineWidth) + lineWidth;
-            tileness *= tileness * tileness;
+            ${L_TILENESS} = m / lineWidth * (1. - max(0., ${L_DISTANCE}/${CONST_VISIBLE_DISTANCE}.))*(1. - lineWidth) + lineWidth;
+            ${L_TILENESS} *= ${L_TILENESS} * ${L_TILENESS};
         }    
-        float bit = gy*${U_GRID_DIMENSION}.x+gx;
+        float bit = ${L_FLOOR_GRID_COORDINATE}.y*${U_GRID_DIMENSION}.x+${L_FLOOR_GRID_COORDINATE}.x;
         for( int i=0; i<4; i++ ) {
             if( bit < ${CONST_GL_SAFE_BITS}. && bit >= 0. ) {
-                lighting = max(lighting, mod(floor(${U_GRID_LIGHTING}[i]/pow(2.,bit)), 2.)*3.);
+                ${L_LIGHTING} = max(${L_LIGHTING}, mod(floor(${U_GRID_LIGHTING}[i]/pow(2.,bit)), 2.)*5.);
             } 
             bit -= ${CONST_GL_SAFE_BITS}.;
         }
-        gridColor = mix(${U_LINE_COLOR}, gridColor, gridPower);
-        lineColor = gridColor;
-        fillColor = ${U_FILL_COLOR};
+        ${L_GRID_COLOR} = mix(${U_LINE_COLOR}, ${L_GRID_COLOR}, sqrt(${L_GRID_POWER}));
+        ${L_LINE_COLOR} = ${L_GRID_COLOR};
+        ${L_FILL_COLOR} = ${U_FILL_COLOR};
     }
-    vec4 current = vec4(mix(lineColor, mix(vec3(0.), mix(fillColor, gridColor, gridLighting*gridLighting), lighting), tileness), fogginess);
+    vec4 current = vec4(mix(${L_LINE_COLOR}, max(mix(vec3(0.), ${L_FILL_COLOR}, ${L_LIGHTING}), ${L_GRID_COLOR} * ${C_GRID_LIGHT_MULTIPLIER}*(1.-min((${V_VERTEX_POSITION}.z-(${V_VERTEX_POSITION}.x-${U_DIRECTED_LIGHTING_RANGE}.x)*${U_DIRECTED_LIGHTING_RANGE}.y-${U_DIRECTED_LIGHTING_RANGE}.z)/${U_DIRECTED_LIGHTING_RANGE}.w,1.))),${L_TILENESS}), ${L_FOGGINESS});
     // blur
     vec2 textureCoordinate = (${V_SCREEN_COORDINATE}.xy/${V_SCREEN_COORDINATE}.w)/2. + .5;
     float count = 0.;
-    vec4 previous = getSampleColor(textureCoordinate, 0, count);
+    vec4 previous = ${F_GET_SAMPLE_COLOR}(textureCoordinate, 0, count);
     for( int i=1; i<${C_BLUR_ITERATIONS}; ++i ) {
         //float f = float(i*i+2)/2.;
         float f = float(i);
-        previous += getSampleColor(textureCoordinate + vec2(${U_PREVIOUS_DIMENSION}.x, 0.) * f, i, count);
-        previous += getSampleColor(textureCoordinate - vec2(${U_PREVIOUS_DIMENSION}.x, 0.) * f, i, count);
-        previous += getSampleColor(textureCoordinate + vec2(0., ${U_PREVIOUS_DIMENSION}.y) * f, i, count);
-        previous += getSampleColor(textureCoordinate - vec2(0., ${U_PREVIOUS_DIMENSION}.y) * f, i, count);
+        previous += ${F_GET_SAMPLE_COLOR}(textureCoordinate + vec2(${U_PREVIOUS_DIMENSION}.x, 0.) * f, i, count);
+        previous += ${F_GET_SAMPLE_COLOR}(textureCoordinate - vec2(${U_PREVIOUS_DIMENSION}.x, 0.) * f, i, count);
+        previous += ${F_GET_SAMPLE_COLOR}(textureCoordinate + vec2(0., ${U_PREVIOUS_DIMENSION}.y) * f, i, count);
+        previous += ${F_GET_SAMPLE_COLOR}(textureCoordinate - vec2(0., ${U_PREVIOUS_DIMENSION}.y) * f, i, count);
     }
     if( count > 0. ) {
         previous /= count;          
-        float focus = sqrt(sqrt(previous.a));
-        current = vec4(current.rgb * focus * 1.3 + previous.rgb * (1.4 - focus*.8), current.a);
+        float focus = sqrt(previous.a)*${U_CAMERA_LIGHT}.z;
+        current = vec4((current.rgb * focus + previous.rgb * (1. - focus))*${U_CAMERA_LIGHT}.w, current.a);
     }
 
     gl_FragColor = current;
@@ -200,7 +212,7 @@ void main() {
 `;
 
 interface ShowPlay {
-    () : void;
+    (restart: ()=> void) : void;
 }
 
 function initShowPlay(
@@ -210,11 +222,17 @@ function initShowPlay(
     gl: WebGLRenderingContext,
     chunkGenerator: ChunkGenerator, 
     monsterGenerator: MonsterGenerator, 
-    audioContext: AudioContext
+    audioContext: AudioContext 
 ): ShowPlay {
     let canvas = document.getElementById('b') as HTMLCanvasElement;
     let context = canvas.getContext('2d');
     let skybox = document.createElement('img');
+    let inputCanvas: HTMLCanvasElement;
+    if( FLAG_BLOOM ) {
+        inputCanvas = canvas;
+    } else {
+        inputCanvas = offscreenCanvas;
+    }
 
     let textureData: Uint8Array;
     let textureImageData: ImageData;
@@ -228,9 +246,10 @@ function initShowPlay(
     let canvasHeight: number;
     let aspectRatio: number;
 
-    let shootSound = webAudioBoomSoundFactory(audioContext, .3);
-    let dieSound = webAudioBoomSoundFactory(audioContext, 1);
-
+    let shootSound = webAudioBoomSoundFactory(audioContext, .3, .01, 399, .9, .5);
+    let powerupSound = webAudioVibratoSound3DFactory(audioContext, .2, 0, .1, .05, 'square', 1999, 600);
+    
+ 
     // NOTE: regenerate should be a boolean really, but onresize passes some truthy value
     let resize = function(regenerate?: any) {
 
@@ -241,25 +260,31 @@ function initShowPlay(
         offscreenCanvas.width = canvas.width = canvasWidth;
         offscreenCanvas.height = canvas.height = canvasHeight;
 
-        textureData = new Uint8Array(canvasWidth * canvasHeight * 4);
-        textureImageData = context.createImageData(canvasWidth, canvasHeight);
+        if( FLAG_BLOOM ) {
+            textureData = new Uint8Array(canvasWidth * canvasHeight * 4);
+            textureImageData = context.createImageData(canvasWidth, canvasHeight);    
+        }
         if( sourceTexture && FLAG_CLEAN_UP_ON_RESIZE ) {
             gl.deleteTexture(sourceTexture);
-            gl.deleteTexture(targetTexture);
-            gl.deleteFramebuffer(frameBuffer);
-            gl.deleteRenderbuffer(depthBuffer);
+            gl.deleteTexture(targetTexture);            
+            if( FLAG_BLOOM ) {
+                gl.deleteFramebuffer(frameBuffer);
+                gl.deleteRenderbuffer(depthBuffer);    
+            }
         }
         if( regenerate ) {
             sourceTexture = webglCreateTexture(gl, canvasWidth, canvasHeight);
             targetTexture = webglCreateTexture(gl, canvasWidth, canvasHeight);    
-            frameBuffer = gl.createFramebuffer();
-            depthBuffer = gl.createRenderbuffer();
+            if( FLAG_BLOOM ) {
+                frameBuffer = gl.createFramebuffer();
+                depthBuffer = gl.createRenderbuffer();
 
-            gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer);
-            gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
-        
-            gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, canvasWidth, canvasHeight);
-            gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
+                gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer);
+                gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+            
+                gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, canvasWidth, canvasHeight);
+                gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);    
+            }
         }
 
         aspectRatio = canvasWidth/canvasHeight;
@@ -269,8 +294,10 @@ function initShowPlay(
             CONST_BASE_RADIUS/2, 
             CONST_VISIBLE_DISTANCE
         );
-        let flipMatrix = matrix4Scale(1, -1, 1);
-        projectionMatrix = matrix4Multiply(projectionMatrix, flipMatrix);
+        if( FLAG_BLOOM ) {
+            let flipMatrix = matrix4Scale(1, -1, 1);
+            projectionMatrix = matrix4Multiply(projectionMatrix, flipMatrix);
+        }
     
         // pretty sure we didn't use to need this?
         gl.viewport(0, 0, canvasWidth, canvasHeight);
@@ -321,7 +348,13 @@ function initShowPlay(
         if( FLAG_GL_CULL_EXPLOSIONS ) {
             gl.enable(gl.CULL_FACE);
         }
-        gl.cullFace(gl.BACK);
+        if( FLAG_BLOOM ) {
+            // I think the flipping operation means we have to cull the opposite faces?
+            gl.cullFace(gl.FRONT);
+        } else {
+            gl.cullFace(gl.BACK);
+
+        }
     }
 
     let vertexShader = webglLoadShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
@@ -365,17 +398,20 @@ function initShowPlay(
     let uPowerSources = gl.getUniformLocation(shaderProgram, U_POWER_SOURCES);
     let uPowerSourceCount = gl.getUniformLocation(shaderProgram, U_POWER_SOURCE_COUNT);
 
-    let play = function() {
+    let play = function(onRestart: () => void) {
         let animationFrameHandle: number;
         let destroy = function() {
             window.cancelAnimationFrame(animationFrameHandle);
             canvas.className = '';
+            if( !FLAG_BLOOM ) {
+                offscreenCanvas.className = 'v';
+            }
             if( FLAG_CLEANUP_EVENT_HANDLERS_ON_DESTROY ) {
                 window.onresize = null;
                 window.onkeydown = null;
                 window.onkeyup = null;
-                canvas.onmousedown = null;
-                canvas.onmouseup = null;
+                inputCanvas.onmousedown = null;
+                inputCanvas.onmouseup = null;
             }
             for(let side in world.allEntities ) {
                 let sideEntities = world.allEntities[side];
@@ -387,12 +423,14 @@ function initShowPlay(
         }
     
         canvas.className = 'v';
+        if( !FLAG_BLOOM ) {
+            offscreenCanvas.className = 'v';
+        }
     
         resize(1); 
     
         window.onresize = resize;
 
-        // generate something gun-like
         let posString = localStorage.getItem(''+seed);
         let pos: Vector3;
         if( posString ) {
@@ -433,26 +471,26 @@ function initShowPlay(
             38: 0, 
             87: 0
         };
-        canvas.onmousedown = function(e: MouseEvent) {
+        inputCanvas.onmousedown = function(e: MouseEvent) {
             if( !e.button ) {
-                if( document.pointerLockElement == canvas ) {
+                if( document.pointerLockElement == inputCanvas ) {
                     if( player.deathAge ) {
                         // request restart
                         destroy();
-                        play();
+                        onRestart();
                     } else {
                         shooting = world.age;
                     }
                 } else {
-                    canvas.requestPointerLock();
+                    inputCanvas.requestPointerLock();
                 }
             } 
         }
-        canvas.onmouseup = function(e: MouseEvent) {
+        inputCanvas.onmouseup = function(e: MouseEvent) {
             shooting = 0;
         }     
-        canvas.onmousemove = function(e: MouseEvent) {
-            if( document.pointerLockElement == canvas ) {
+        inputCanvas.onmousemove = function(e: MouseEvent) {
+            if( document.pointerLockElement == inputCanvas ) {
                 
                 dx -= e.movementX;
                 dy = Math.min(canvasHeight/2, Math.max(-canvasHeight/2, dy - e.movementY));    
@@ -478,7 +516,7 @@ function initShowPlay(
         // player.vz = -2.404588689359089e-9;
         
         let walkDistance = 0;
-        // TODO can remove once we get our model under control
+        // generate something gun-like
         let player = monsterGenerator(
             26, 
             pos[0], pos[1], pos[2] + 2, 
@@ -509,6 +547,7 @@ function initShowPlay(
         let maxBattery = Math.pow(batteryLevel, CONST_BATTERY_LEVEL_EXPONENT);
         let battery = maxBattery;
         let lastBattery = battery;
+        let lastBatteryBoost = 0;
         let lastFloor = 0;
         let lastPower = 0;
         let hasBeenOffline: number;
@@ -520,6 +559,8 @@ function initShowPlay(
                         batteryLevel ++;
                         maxBattery = Math.pow(batteryLevel, CONST_BATTERY_LEVEL_EXPONENT);
                         battery ++;
+                        lastBatteryBoost = world.age;
+                        powerupSound(player.x, player.y, player.z);
                     } else {
                         if( !FLAG_TEST_PHYSICS ) {
                             this.die(world, other);
@@ -637,7 +678,7 @@ function initShowPlay(
                         CONST_BULLET_RADIUS, 
                         CONST_BULLET_LIFESPAN
                     );
-                    shootSound(shotInterval/999);
+                    shootSound(player.x, player.y, player.z);
                     bullet.side = SIDE_NEUTRAL;
                     bullet.sound = null;
                     bullet.onCollision = function(this: Monster, world: World, withEntity: Entity) {
@@ -711,15 +752,18 @@ function initShowPlay(
             lightingAngle = Math.min(Math.PI/2, world.cameraX/CONST_FINISH_X_DIV_PI);
             lightingSin = Math.sin(lightingAngle);
             lightingCos = Math.cos(lightingAngle);
-            gl.uniform4f(uDirectedLightingNormal, lightingCos, 0, lightingSin, lightingSin * CONST_DIRECTIONAL_LIGHT_INTENSITY);
+            gl.uniform4f(uDirectedLightingNormal, lightingCos, 0, lightingSin, (lightingSin + 1) * CONST_DIRECTIONAL_LIGHT_INTENSITY_DIV_2);
 
 
+            let cameraLightDistance = CONST_CAMERA_LIGHT_DISTANCE;
+            let cameraLightIntensity = CONST_CAMERA_LIGHT_INTENSITY;
             if( FLAG_MUZZLE_FLASH ) {
                 let shotLightBonus = Math.max(0, lastShot + CONST_MUZZLE_FLASH_DURATION - world.age)/CONST_MUZZLE_FLASH_DURATION;
-                gl.uniform2f(uCameraLight, CONST_CAMERA_LIGHT_DISTANCE + shotLightBonus, CONST_CAMERA_LIGHT_INTENSITY + shotLightBonus);    
-            } else {
-                gl.uniform2f(uCameraLight, CONST_CAMERA_LIGHT_DISTANCE, CONST_CAMERA_LIGHT_INTENSITY);    
+                cameraLightIntensity += shotLightBonus;
+                // I don't think this will make much difference
+                //cameraLightDistance += shotLightBonus;
             }
+            gl.uniform4f(uCameraLight, cameraLightDistance, cameraLightIntensity, CONST_BLUR, CONST_BLOOM);    
     
             // draw all the entities
             for( let side in world.allEntities ) {
@@ -727,7 +771,7 @@ function initShowPlay(
                     let entities = world.allEntities[side];
                     for( let entity of entities ) {
                         let surfaceOrMonster = entity as Surface | Monster;
-                        if( FLAG_GL_CULL_EXPLOSIONS ) {
+                        if( !FLAG_GL_CULL_EXPLOSIONS ) {
                             gl.enable(gl.CULL_FACE);
                         }
             
@@ -747,6 +791,7 @@ function initShowPlay(
                         gl.uniform1i(uGridMode, entity.type);
 
                         let offsetBuffer: WebGLBuffer;
+                        let lineColor: Vector3;
                         if( entity.type ) {
                             let monster = entity as Monster; 
                             offsetBuffer = monster.offsetBuffer;
@@ -769,7 +814,7 @@ function initShowPlay(
             
                             let cycle = entity.age / monster.cycleLength;
                             let offsetMultiplier = 0;
-                            let lineColor = monster.lineColor;
+                            lineColor = monster.lineColor;
                             if( monster.deathAge ) {
                                 if( !FLAG_GL_CULL_EXPLOSIONS ) {
                                     gl.disable(gl.CULL_FACE);
@@ -789,7 +834,6 @@ function initShowPlay(
                             gl.uniform1f(uCycleRadians, cycle * Math.PI * 2);
                             gl.uniform1f(uOffsetMultiplier, offsetMultiplier);
                             gl.uniform1f(uLineWidth, monster.lineWidth);
-                            gl.uniform3fv(uLineColor, lineColor);
             
                             let modelMatrix = matrix4MultiplyStack(matrixStack);
                             gl.uniformMatrix4fv(uModelMatrix, false, modelMatrix);
@@ -803,12 +847,13 @@ function initShowPlay(
                             gl.uniformMatrix4fv(uModelMatrix, false, surface.pointsToWorld);
                             gl.uniform2f(uGridDimension, surface.width, surface.height);
                             gl.uniform1fv(uGridLighting, surface.gridLighting);
-                            gl.uniform3fv(uLineColor, CONST_INERT_GRID_COLOR_RGB);
+                            lineColor = CONST_INERT_GRID_COLOR_RGB;
                             directedLightingRange = surface.directedLightingRange;
                         }
                         webglBindAttributeBuffer(gl, offsetBuffer, aVertexOffset, 4); 
             
                         gl.uniform3fv(uFillColor, fillColor);
+                        gl.uniform3fv(uLineColor, lineColor);
                         gl.uniform4fv(uDirectedLightingRange, directedLightingRange);
                         gl.uniform1f(uAmbientLight, ambientLighting);
 
@@ -828,8 +873,10 @@ function initShowPlay(
 
             world.update(diff);
 
-            gl.bindTexture(gl.TEXTURE_2D, targetTexture);
-            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, targetTexture, 0);
+            if( FLAG_BLOOM ) {
+                gl.bindTexture(gl.TEXTURE_2D, targetTexture);            
+                gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, targetTexture, 0);
+            }
 
             let deadness = 0;
             if( FLAG_DEATH_ANIMATION && player.deathAge ) {
@@ -879,18 +926,27 @@ function initShowPlay(
 
             previousViewMatrix = viewMatrix;            
 
-            let tmp = sourceTexture;
-            sourceTexture = targetTexture;
-            targetTexture = tmp;
+            if( FLAG_BLOOM ) {
+                let tmp = sourceTexture;
+                sourceTexture = targetTexture;
+                targetTexture = tmp;
+    
+                gl.readPixels(0, 0, canvasWidth, canvasHeight, gl.RGBA, gl.UNSIGNED_BYTE, textureData);
+                textureImageData.data.set(textureData);
+                context.putImageData(textureImageData, 0, 0);        
 
-            gl.readPixels(0, 0, canvasWidth, canvasHeight, gl.RGBA, gl.UNSIGNED_BYTE, textureData);
-            textureImageData.data.set(textureData);
-            context.putImageData(textureImageData, 0, 0);    
-
+            } else {
+                context.clearRect(0, 0, canvasWidth, canvasHeight);
+            }
             context.globalCompositeOperation = 'destination-over';
             // draw in a background
             if( FLAG_BACKGROUND ) {
-                let lightingMatrix = matrix4Multiply(projectionMatrix, rotationMatrixX);
+                let lightingMatrix: Matrix4;
+                if( FLAG_BLOOM ) {
+                    lightingMatrix = matrix4Multiply(projectionMatrix, rotationMatrixX)
+                } else {
+                    lightingMatrix = matrix4MultiplyStack([projectionMatrix, matrix4Scale(1, -1, 1), rotationMatrixX]);
+                }
                 let screenPosition = vector3TransformMatrix4(
                     0, 
                     1, 
@@ -974,6 +1030,16 @@ function initShowPlay(
                 }
                 // show battery
                 context.fillRect(canvasWidth - maxBattery - CONST_STATUS_HEIGHT, CONST_STATUS_HEIGHT, battery, CONST_STATUS_HEIGHT);
+                if( FLAG_FLASH_BATTERY_BOOST_FLASH_BAR ) {
+                    let batteryBoost = lastBatteryBoost - world.age + CONST_BATTERY_BOOST_ANIMATION_DURATION;
+                    if( batteryBoost > 0 ) {
+                        let p = batteryBoost/CONST_BATTERY_BOOST_ANIMATION_DURATION;
+                        context.globalAlpha = p;
+                        context.lineWidth = (1-p) * 9 + 1;
+                    } else {
+                        context.lineWidth = 1;
+                    }    
+                }
                 context.strokeRect(canvasWidth - maxBattery - CONST_STATUS_HEIGHT, CONST_STATUS_HEIGHT, maxBattery, CONST_STATUS_HEIGHT);
                 let powerSymbolWidth = context.measureText(CONST_BATTERY_SYMBOL).width;
                 let p = lastPower;

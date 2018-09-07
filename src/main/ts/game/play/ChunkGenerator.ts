@@ -64,6 +64,8 @@ function flatChunkGeneratorFactory(
                 chunkX, chunkY, 
                 0, angle, 
                 neutralFillColor, 
+                // TODO adjust ratio so the lines match up with the walls
+                2, 2,
                 directedLightingRange
             );    
         } else {
@@ -74,6 +76,7 @@ function flatChunkGeneratorFactory(
                 chunkX, chunkY, 
                 0, 0, 
                 neutralFillColor, 
+                2, 2,
                 directedLightingRange
             );    
         }
@@ -86,6 +89,7 @@ function flatChunkGeneratorFactory(
                 chunkX, chunkY, 
                 0, Math.PI/2,  
                 neutralFillColor, 
+                3, 2,
                 directedLightingRange
             );
             entities.push(wall);
@@ -97,6 +101,7 @@ function flatChunkGeneratorFactory(
                 chunkX, chunkY, 
                 Math.PI/2, 0,  
                 neutralFillColor, 
+                2, 3, 
                 directedLightingRange
             );
             entities.push(wall);
@@ -109,6 +114,7 @@ function flatChunkGeneratorFactory(
                 chunkX, chunkY, 
                 -Math.PI/2, 0,
                 neutralFillColor, 
+                2, 3, 
                 directedLightingRange
             );
             entities.push(wall);
@@ -144,7 +150,9 @@ function flatChunkGeneratorFactory(
                 if( entity.side == SIDE_NEUTRAL ) {
                     this.lastDamageAge = world.age;
                     // it's a player's bullet
-                    damage++;
+                    if( damage < maxHealth ) {
+                        damage++;
+                    }
                 }
             };
             while( buildingSegments-- && buildingWidth > 1 && buildingHeight > 1 ) {
@@ -154,7 +162,7 @@ function flatChunkGeneratorFactory(
     
                 maxSpawnCount += buildingWidth * buildingHeight;
 
-                maxHealth += buildingWidth * buildingHeight/CONST_SIZE_HEALTH_RATIO;
+                maxHealth += buildingWidth * buildingHeight/CONST_BUILDING_SIZE_HEALTH_RATIO;
 
                 let buildingWallWest = surfaceGenerator( 
                     buildingX, buildingY, buildingZ, 
@@ -162,6 +170,7 @@ function flatChunkGeneratorFactory(
                     chunkX, chunkY, 
                     Math.PI/2, 0, 
                     fillColor, 
+                    1, 1, 
                     directedLightingRange, 
                     onCollision
                 );
@@ -172,6 +181,7 @@ function flatChunkGeneratorFactory(
                     chunkX, chunkY, 
                     -Math.PI/2, 0, 
                     fillColor, 
+                    1, 1, 
                     directedLightingRange, 
                     onCollision
                 );
@@ -181,6 +191,7 @@ function flatChunkGeneratorFactory(
                     chunkX, chunkY, 
                     0, Math.PI/2, 
                     fillColor, 
+                    1, 1, 
                     directedLightingRange, 
                     onCollision
                 );
@@ -190,6 +201,7 @@ function flatChunkGeneratorFactory(
                     chunkX, chunkY, 
                     0, -Math.PI/2, 
                     fillColor, 
+                    1, 1, 
                     directedLightingRange, 
                     onCollision
                 );
@@ -199,6 +211,7 @@ function flatChunkGeneratorFactory(
                     chunkX, chunkY, 
                     0, 0, 
                     fillColor, 
+                    1, 1, 
                     directedLightingRange, 
                     onCollision
                 );
@@ -228,7 +241,8 @@ function flatChunkGeneratorFactory(
             let spawns:{[_:number]:{[_:number]:Monster}} = {};
             let nextBirth: number = 0;            
             let damage = liberated?maxHealth:0;
-            let power = damage;
+            let friendliness = damage/maxHealth;
+            let power = damage * friendliness/CONST_BUILDING_DAMAGE_POWER_DIV;
             let previousDamage = damage;
 
             let spawnTypeCount = tileRng(3) + 1;
@@ -325,7 +339,7 @@ function flatChunkGeneratorFactory(
                 cleanup: function() {
                 }, 
                 power: power, 
-                friendliness: damage/maxHealth,
+                friendliness: friendliness,
                 side: SIDE_BUILDING, 
                 update: function(world: World, diff: number) {
                     if( damage < maxHealth ) {
@@ -395,7 +409,7 @@ function flatChunkGeneratorFactory(
                         let friendliness = damage/maxHealth;
                         friendliness *= friendliness;
                         building.friendliness = friendliness;
-                        building.power = friendliness*maxHealth;
+                        building.power = friendliness*maxHealth*CONST_BUILDING_DAMAGE_POWER_DIV;
                         previousDamage = damage;
                     }    
                 }

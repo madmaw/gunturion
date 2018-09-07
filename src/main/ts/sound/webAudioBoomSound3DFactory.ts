@@ -1,16 +1,22 @@
-function webAudioBoomSoundFactory(audioContext: AudioContext, sampleDurationSeconds: number, sound?: Sound): Sound {
-    var frameCount = sampleDurationSeconds * audioContext.sampleRate;
+function webAudioBoomSoundFactory(
+    audioContext: AudioContext, 
+    durationSeconds: number, 
+    attackSeconds: number, 
+    filterFrequency: number, 
+    attackVolume: number, 
+    sustainVolume: number,
+    sound?: Sound3D
+): Sound3D {
+    var frameCount = durationSeconds * audioContext.sampleRate;
     var buffer = audioContext.createBuffer(1, frameCount, audioContext.sampleRate);
     var data = buffer.getChannelData(0);
     for (var i = 0; i < frameCount; i++) {
         data[i] = Math.random() * 2 - 1;
     }
 
-    return function (intensity: number) {
+    return function (x: number, y: number, z: number) {
         if (audioContext) {
             // set up the frequency
-            var now = audioContext.currentTime;
-            var durationSeconds = sampleDurationSeconds;
 
             var staticNode = audioContext.createBufferSource();
             staticNode.buffer = buffer;
@@ -19,16 +25,22 @@ function webAudioBoomSoundFactory(audioContext: AudioContext, sampleDurationSeco
             var filter = audioContext.createBiquadFilter();
             filter.type = 'lowpass';
             filter.Q.value = 0;
-            filter.frequency.value = 999 * (2 - intensity);
+            filter.frequency.value = filterFrequency;
 
             //decay
             var gain = audioContext.createGain();
             var decay = durationSeconds * .2;
-            linearRampGain(gain, now, .3, .2, durationSeconds * .5 * (1 - intensity), decay, null, durationSeconds);
+            linearRampGain(gain, audioContext.currentTime, attackVolume, sustainVolume, attackSeconds, decay, null, durationSeconds);
+
+            let panner = audioContext.createPanner();
+            panner.refDistance = CONST_MAX_SOUND_RADIUS_SQRT * attackVolume * 9;
+            panner.distanceModel = 'exponential';
+            panner.setPosition(x, y, z);
 
             staticNode.connect(filter);
             filter.connect(gain);
-            gain.connect(audioContext.destination);
+            gain.connect(panner);
+            panner.connect(audioContext.destination);
 
 
             // die
@@ -40,7 +52,7 @@ function webAudioBoomSoundFactory(audioContext: AudioContext, sampleDurationSeco
 
             staticNode.start();
             if (sound) {
-                sound(intensity);
+                sound(x, y, z);
             }
 
         }

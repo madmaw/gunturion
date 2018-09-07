@@ -127,6 +127,8 @@ interface SurfaceGenerator {
         rotateX: number, 
         rotateY: number, 
         fillColor: Vector3, 
+        lineScaleX: number, 
+        lineScaleY: number,
         directedLightingRange: Vector4, 
         onCollision?: (world: World, entity: Entity) => void
     ): Surface;
@@ -147,6 +149,8 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
         rotateX: number, 
         rotateY: number, 
         fillColor: Vector3, 
+        lineScaleX: number, 
+        lineScaleY: number,
         directedLightingRange: Vector4, 
         onCollision: (world: World, entity: Entity) => void
     ) {
@@ -160,15 +164,15 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
         ];
         let floorPositionBuffer = webglCreateArrayBuffer(gl, floorPositions);
         
-        let lineScale = 1;
-        let lineX = width/lineScale;
-        let lineY = height/lineScale;
-        let aspectRatio = 1;
+        let lineX = width/lineScaleX;
+        let lineY = height/lineScaleY;
+        // assume we are always rotating only one axis by 90 degrees
+        let lineAspectRatio = rotateX?lineScaleX/lineScaleY:lineScaleY/lineScaleX;
         let gridCoordinates = [
-            0, 0, aspectRatio, 0,  
-            lineX, 0, aspectRatio, 0, 
-            lineX, lineY, aspectRatio, 0, 
-            0, lineY, aspectRatio, 0
+            0, 0, lineAspectRatio, 0,  
+            lineX, 0, lineAspectRatio, 0, 
+            lineX, lineY, lineAspectRatio, 0, 
+            0, lineY, lineAspectRatio, 0
         ];
         let gridCoordinateBuffer = webglCreateArrayBuffer(gl, gridCoordinates);
 
@@ -258,7 +262,11 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
     }    
 }
 
-function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNumberGeneratorFactory, soundLoopFactory: SoundLoop3DFactory): MonsterGenerator {
+function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNumberGeneratorFactory, audioContext: AudioContext): MonsterGenerator {
+
+    let soundLoopFactory = webAudioVibratoSoundLoop3DFactory(audioContext, rngFactory);
+    let dieSound = webAudioBoomSoundFactory(audioContext, .7, .1, 777, .4, .3);
+
 
     let nextId = 0;
 
@@ -890,23 +898,27 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         }
         // fly toward player height
         if( gravityMultiplier<1 && shift(3) ) {
-            let acceleration = rng() * .0001 + .0001; //(shift(4)+1)/9999;
+            let acceleration = rng() * .000001 + .000001; //(shift(4)+1)/9999;
+            let accelerationPerSecond = acceleration*999999;
             behaviours.unshift(function(world: World, diff: number, takenFlags: number) {
                 if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT ) ) {
                     let target = world.getNearestEnemy(monster, 9);
                     if( target ) {
                         let dz = target.z - monster.z;
                         if( dz ) {
-                            let time = dz / monster.vz;
-                            let deltaVelocity;
-                            if( monster.vz && acceleration * time * time > Math.abs(dz) ) {
-                                // going too fast
-                                deltaVelocity = -dz/time;
+                            let timeToHere = monster.vz/accelerationPerSecond;
+                            let distanceToHere = accelerationPerSecond*timeToHere*timeToHere/2;
+                            let totalDistance = Math.abs(dz) + distanceToHere;
+                            let pastHalfWay = distanceToHere > totalDistance/2;
+                            let acc;
+                            if( pastHalfWay && dz > 0 || !pastHalfWay && dz < 0 ) {
+                                // decelerate
+                                acc = -acceleration;
                             } else {
-                                // going too slow
-                                deltaVelocity = dz/diff;
+                                // accelerate
+                                acc = acceleration;
                             }
-                            monster.vz += Math.max(-acceleration, Math.min(acceleration, deltaVelocity))*diff;
+                            monster.vz += acc*diff;
                             return MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT;        
                         }                        
                     }
@@ -1065,6 +1077,9 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                     gl.deleteBuffer(offsetBuffer);
                     gl.deleteBuffer(barrycentricCoordinatesBuffer);
                 }
+                if( monster.sound ) {
+                    monster.sound.stop();
+                }
             },
             die: function(this: Monster, world: World, deathSource: Entity) {
                 if( !monster.deathAge ) {
@@ -1077,19 +1092,27 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                     }
                     if( deathSource && deathSource != monster && monster.side == SIDE_ENEMY ) {
                         // spawn some gems
-                        let r = radius * Math.random();
+                        let r = radius;
+                        let max = Math.random();
+
+                        dieSound(monster.x, monster.y, monster.z);
                         
-                        while( r > 0 ) {
+                        while( r > max ) {
                             r--;
                             let a = r*CONST_DIRTY_PI_2/radius;
+                            let cos = Math.cos(a);
+                            let sin = Math.sin(a);
                             let gem = monsterGenerator(
                                 4195348, 
-                                monster.x + Math.cos(a)*CONST_SMALL_NUMBER, monster.y + Math.sin(a)*CONST_SMALL_NUMBER, monster.z, 
+                                monster.x + cos*CONST_SMALL_NUMBER, monster.y + sin*CONST_SMALL_NUMBER, monster.z, 
                                 .1, 
                                 4999,
                                 null, 
-                                .01
+                                .001
                             );
+                            gem.vx = cos * CONST_GEM_VELOCITY;
+                            gem.vy = sin * CONST_GEM_VELOCITY;
+
                             gem.side = SIDE_POWERUPS;
                             gem.lineColor = CONST_FRIENDLY_LINE_COLOR;
                             gem.fillColor = CONST_FRIENDLY_FILL_COLOR;
