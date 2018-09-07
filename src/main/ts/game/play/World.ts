@@ -56,7 +56,7 @@ class World {
         this.setCameraPosition(cameraPosition[0], cameraPosition[1], cameraPosition[2], 0, 0, 0); 
     }
 
-    public update(amt: number) {
+    public updateWorld(amt: number) {
         if( CONST_FIXED_STEP ) {
             let totalAmt = amt + this.bonusMillis;
             while( totalAmt >= CONST_FIXED_STEP ) {
@@ -92,7 +92,7 @@ class World {
                 // it's outside the active area, kill it
                 this.removeEntity(updatableEntity);
             } else {
-                let done = updatableEntity.update(this, amt);
+                let done = updatableEntity.onUpdate(this, amt);
 
                 // console.log('starting update');
                 // console.log('original position', activeMonster.x, activeMonster.y, activeMonster.z);

@@ -23,7 +23,8 @@ window.onload = function() {
         seed,
         surfaceGenerator, 
         monsterGenerator, 
-        rngFactory
+        rngFactory, 
+        audioContext
     );
 
     let showPlay = initShowPlay(

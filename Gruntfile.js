@@ -62,7 +62,7 @@ module.exports = function (grunt) {
                 replacements: [/*{
                     from: /(=|:|return |\(|,)function\(([^\)]*)\)/g, 
                     to:"$1($2)=>"
-                }, {
+                }*/ /*, {
                     from: /var [^;=]*;/g, 
                     to: ""
                 }*/, {
@@ -74,6 +74,9 @@ module.exports = function (grunt) {
                 }, {
                     from: /(\n|\r)/g,
                     to: ""
+                }, {
+                    from: /( *\\n *)/g,
+                    to: "\\n"
                 }/*, {
                     // note, this is a symptom that TS is initalizing your local vars (which you don't want)
                     from: /void 0/g,

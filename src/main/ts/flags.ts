@@ -1,4 +1,4 @@
-const FLAG_PRODUCTION = false;
+const FLAG_PRODUCTION = true;
 
 const FLAG_SHOW_FPS = true && !FLAG_PRODUCTION;
 const FLAG_GL_SHOW_SHADER_ERRORS = true && !FLAG_PRODUCTION;

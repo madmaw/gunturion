@@ -6,12 +6,15 @@ function flatChunkGeneratorFactory(
     seed: number,
     surfaceGenerator: SurfaceGenerator,
     monsterGenerator: MonsterGenerator, 
-    rngFactory: RandomNumberGeneratorFactory
+    rngFactory: RandomNumberGeneratorFactory,
+    audioContext: AudioContext
 ): ChunkGenerator {
 
     let neutralFillColor = [.3, .2, .3];
     let goodFillColor = [.4, .4, .1];
     let badFillColor = [.4, .1, .4];
+
+    let monsterBirthSound = webAudioVibratoSound3DFactory(audioContext, .4, 0, .2, .1, 'sine', 777, 333);//webAudioVibratoSound3DFactory(audioContext, .3, 0, .3, .1, 'sine', 555, 222, 200);
 
     function getFloorHeight(chunkX: number, chunkY: number) {
         // a lot of tiles aren't actually random
@@ -341,7 +344,7 @@ function flatChunkGeneratorFactory(
                 power: power, 
                 friendliness: friendliness,
                 side: SIDE_BUILDING, 
-                update: function(world: World, diff: number) {
+                onUpdate: function(world: World, diff: number) {
                     if( damage < maxHealth ) {
                         damage = Math.max(0, damage - diff / 999);
                         world.aggro = Math.max(damage, world.aggro);
@@ -381,6 +384,7 @@ function flatChunkGeneratorFactory(
                                             if( entity.birthday < world.age ) {
                                                 delete wallSpawns[tileId];
                                                 world.addEntity(entity);
+                                                monsterBirthSound(entity.x, entity.y, entity.z);
                                                 setWallLight(wall, parseInt(tileId));
                                                 nextBirth = CONST_BASE_BUILDING_BIRTH_INTERVAL;
                                                 spawnCount--;                

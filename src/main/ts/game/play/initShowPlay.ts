@@ -23,6 +23,7 @@ const V_VERTEX_POSITION = FLAG_SHORTEN_GLSL_VARIABLES?'s':'vVertexPosition_';
 const C_BLUR_ITERATIONS = FLAG_BLOOM?7:0;
 const C_MAX_POWER_SOURCES = 9;
 const C_GRID_LIGHT_MULTIPLIER = '.4';
+const C_LINE_WIDTH = '.2';
 
 const L_ADJUSTED_VERTEX_POSITION = FLAG_SHORTEN_GLSL_VARIABLES?'t':'adjustedVertePosition_';
 const L_VERTEX_NORMAL = FLAG_SHORTEN_GLSL_VARIABLES?'u':'vertexNormal_';
@@ -53,8 +54,8 @@ void main(){
 vec3 ${L_ADJUSTED_VERTEX_POSITION}=${A_VERTEX_POSITION}.xyz;
 vec3 ${L_VERTEX_NORMAL}=${U_SURFACE_NORMAL};
 if(${U_GRID_MODE}>0){
-  ${L_ADJUSTED_VERTEX_POSITION}+=${A_VERTEX_OFFSET}.w*${A_VERTEX_POSITION}.xyz*sin(${U_CYCLE_RADIANS}+${A_GRID_COORDINATE}.w)+${U_OFFSET_MULTIPLIER}*${A_VERTEX_OFFSET}.xyz;
-  ${L_VERTEX_NORMAL}=(${U_MODEL_MATRIX}*vec4(${A_VERTEX_POSITION}.xyz/${A_VERTEX_POSITION}.w,1.)-${U_MODEL_MATRIX}*vec4(vec3(0.), 1.)).xyz;}
+    ${L_ADJUSTED_VERTEX_POSITION}+=${A_VERTEX_OFFSET}.w*${A_VERTEX_POSITION}.xyz*sin(${U_CYCLE_RADIANS}+${A_GRID_COORDINATE}.w)+${U_OFFSET_MULTIPLIER}*${A_VERTEX_OFFSET}.xyz;
+    ${L_VERTEX_NORMAL}=(${U_MODEL_MATRIX}*vec4(${A_VERTEX_POSITION}.xyz/${A_VERTEX_POSITION}.w,1.)-${U_MODEL_MATRIX}*vec4(vec3(0.), 1.)).xyz;}
 vec4 ${L_VERTEX_POSITION}=${U_MODEL_MATRIX}*vec4(${L_ADJUSTED_VERTEX_POSITION},1.);
 vec4 ${L_RELATIVE_VERTEX_POSITION}=${U_VIEW_MATRIX}*${L_VERTEX_POSITION};
 ${V_GRID_COORDINATE}=${A_GRID_COORDINATE};
@@ -66,7 +67,6 @@ gl_Position=${U_PROJECTION_MATRIX}*${L_RELATIVE_VERTEX_POSITION};}`;
 
 const U_FILL_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'t':'uFillColor_';
 const U_LINE_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'u':'uLineColor_';
-const U_LINE_WIDTH = FLAG_SHORTEN_GLSL_VARIABLES?'v':'uLineWidth_';
 const U_CAMERA_LIGHT = FLAG_SHORTEN_GLSL_VARIABLES?'w':'uCameraLight_';
 const U_AMBIENT_LIGHT = FLAG_SHORTEN_GLSL_VARIABLES?'x':'uAmbientLight_';
 const U_GRID_DIMENSION= FLAG_SHORTEN_GLSL_VARIABLES?'y':'uGridDimension_';
@@ -98,13 +98,20 @@ const L_FILL_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'W':'fillColor_';
 const L_LINE_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'X':'lineColor_';
 const L_FWIDTH = FLAG_SHORTEN_GLSL_VARIABLES?'Y':'a3_';
 const L_FLOOR_GRID_COORDINATE = FLAG_SHORTEN_GLSL_VARIABLES?'Z':'floorGridCoordinate_';
+const L_LINE_DELTA_MIN = FLAG_SHORTEN_GLSL_VARIABLES?'a':'mn_';
+const L_LINE_DELTA_MAX = FLAG_SHORTEN_GLSL_VARIABLES?'b':'mx_';
+const L_LINE_WIDTH = FLAG_SHORTEN_GLSL_VARIABLES?'c':'lineWidth_';
+const L_BIT = FLAG_SHORTEN_GLSL_VARIABLES?'d':'bit_';
+const L_CURRENT_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'e':'currentColor_';
+const L_TEXTURE_COORDINATE = FLAG_SHORTEN_GLSL_VARIABLES?'f':'textureCoordinate_';
+const L_COUNT = FLAG_SHORTEN_GLSL_VARIABLES?'g':'count_';
+const L_FOCUS = FLAG_SHORTEN_GLSL_VARIABLES?'h':'focus_';
 
 let fragmentShaderSource = 
 `#extension GL_OES_standard_derivatives:enable
 precision lowp float;
 uniform vec3 ${U_FILL_COLOR};
 uniform vec3 ${U_LINE_COLOR};
-uniform float ${U_LINE_WIDTH};
 uniform vec4 ${U_CAMERA_LIGHT};
 uniform float ${U_AMBIENT_LIGHT};
 uniform sampler2D ${U_PREVIOUS};
@@ -120,96 +127,74 @@ varying vec3 ${V_RELATIVE_POSITION};
 varying vec4 ${V_GRID_COORDINATE};
 varying vec4 ${V_SCREEN_COORDINATE};
 varying vec4 ${V_NORMAL_LIGHTING};
-
 vec4 ${F_GET_SAMPLE_COLOR}(vec2 ${FP_SCREEN_COORDINATE},int ${FP_DIV},inout float ${FP_COUNT}){
-    vec4 ${L_PREVIOUS_COLOR}=texture2D(${U_PREVIOUS},${FP_SCREEN_COORDINATE});
-    if(${L_PREVIOUS_COLOR}.a>.1){
-        float ${L_MULT}=${C_BLUR_ITERATIONS}./float(${C_BLUR_ITERATIONS}-${FP_DIV}); 
-        ${FP_COUNT}+=${L_MULT};
-        return ${L_PREVIOUS_COLOR}*${L_MULT};
-    }else{
-        return vec4(0.);
-    }
-}
-
+vec4 ${L_PREVIOUS_COLOR}=texture2D(${U_PREVIOUS},${FP_SCREEN_COORDINATE});
+if(${L_PREVIOUS_COLOR}.a>.1){
+    float ${L_MULT}=${C_BLUR_ITERATIONS}./float(${C_BLUR_ITERATIONS}-${FP_DIV}); 
+    ${FP_COUNT}+=${L_MULT};
+    return ${L_PREVIOUS_COLOR}*${L_MULT};
+}else{
+    return vec4(0.);}}
 void main(){
-    // TODO can shorten this for sure
-    float ${L_DISTANCE_SQUARED}=${V_RELATIVE_POSITION}.x*${V_RELATIVE_POSITION}.x+${V_RELATIVE_POSITION}.y*${V_RELATIVE_POSITION}.y+${V_RELATIVE_POSITION}.z*${V_RELATIVE_POSITION}.z;
-    float ${L_DISTANCE}=sqrt(${L_DISTANCE_SQUARED});
-    float ${L_FOGGINESS}=0.;
-    if(${L_DISTANCE} < ${CONST_VISIBLE_DISTANCE}. ) {
-        ${L_FOGGINESS}=clamp((${CONST_VISIBLE_DISTANCE_SQUARED}.-${L_DISTANCE_SQUARED}) / ${CONST_VISIBLE_DISTANCE_SQUARED}., 0., 1.);
-    }
-    vec3 ${L_GRID_COLOR}=vec3(0.);
-    float ${L_GRID_POWER}=0.;
-    for(int i=0;i<${C_MAX_POWER_SOURCES};i++){
-        if(i<${U_POWER_SOURCE_COUNT}){
-            vec4 ${L_POWER_SOURCE}=${U_POWER_SOURCES}[i];
-            vec2 ${L_POWER_SOURCE_DELTA} = ${L_POWER_SOURCE}.xy - ${V_VERTEX_POSITION}.xy;
-            float ${L_POWER_SOURCE_DISTANCE}=sqrt(${L_POWER_SOURCE_DELTA}.x*${L_POWER_SOURCE_DELTA}.x+${L_POWER_SOURCE_DELTA}.y*${L_POWER_SOURCE_DELTA}.y);
-            if(${L_POWER_SOURCE_DISTANCE}<${L_POWER_SOURCE}.z){
-                float ${L_POWER}=${L_POWER_SOURCE_DISTANCE}/${L_POWER_SOURCE}.z;
-                float ${L_POWER_SQUARED}=1.-${L_POWER}*${L_POWER};
-                ${L_GRID_POWER}+=${L_POWER_SQUARED};
-                ${L_GRID_COLOR}+=vec3(.5,${L_POWER_SOURCE}.w,.5-${L_POWER_SOURCE}.w)*${L_POWER_SQUARED};
-            }
-        }
-    }
-    if(${L_GRID_POWER}>0.){
-        ${L_GRID_COLOR}/=${L_GRID_POWER};
-    }
-    float ${L_LIGHTING}=clamp(1.-${L_DISTANCE}/${U_CAMERA_LIGHT}.x,0.,1.)*-dot(${V_RELATIVE_POSITION}/${L_DISTANCE},${V_NORMAL_LIGHTING}.xyz)*${U_CAMERA_LIGHT}.y+${U_AMBIENT_LIGHT}+${V_NORMAL_LIGHTING}.w;
-    float ${L_TILENESS}=1.;
-    vec3 ${L_FILL_COLOR};
-    vec3 ${L_LINE_COLOR};
-    if(${U_GRID_MODE}>0){
-        vec3 ${L_FWIDTH}=smoothstep(vec3(0.0),fwidth(${V_GRID_COORDINATE}.xyz)*max(1.,${U_LINE_WIDTH}*(1.-${L_DISTANCE}/${CONST_VISIBLE_DISTANCE}.)),${V_GRID_COORDINATE}.xyz);
-        ${L_TILENESS}=min(min(${L_FWIDTH}.x,${L_FWIDTH}.y),${L_FWIDTH}.z);
-        ${L_FILL_COLOR}=${U_FILL_COLOR};
-        ${L_LINE_COLOR}=${U_LINE_COLOR};
-    } else { 
-        vec4 ${L_FLOOR_GRID_COORDINATE}=floor(${V_GRID_COORDINATE});
-        float mn=min(${V_GRID_COORDINATE}.x-${L_FLOOR_GRID_COORDINATE}.x,(${V_GRID_COORDINATE}.y-${L_FLOOR_GRID_COORDINATE}.y)*${V_GRID_COORDINATE}.z);
-        float mx=max(${V_GRID_COORDINATE}.x-${L_FLOOR_GRID_COORDINATE}.x,1.-(1.-${V_GRID_COORDINATE}.y+${L_FLOOR_GRID_COORDINATE}.y)*${V_GRID_COORDINATE}.z);
-        float lineWidth = (1. + ${L_GRID_POWER}*${L_GRID_POWER})*${V_GRID_COORDINATE}.w; 
-        if( mn < lineWidth || mx > (1. - lineWidth) ) {
-            float m = min(mn, 1. - mx);
-            ${L_TILENESS} = m / lineWidth * (1. - max(0., ${L_DISTANCE}/${CONST_VISIBLE_DISTANCE}.))*(1. - lineWidth) + lineWidth;
-            ${L_TILENESS} *= ${L_TILENESS} * ${L_TILENESS};
-        }    
-        float bit = ${L_FLOOR_GRID_COORDINATE}.y*${U_GRID_DIMENSION}.x+${L_FLOOR_GRID_COORDINATE}.x;
-        for( int i=0; i<4; i++ ) {
-            if( bit < ${CONST_GL_SAFE_BITS}. && bit >= 0. ) {
-                ${L_LIGHTING} = max(${L_LIGHTING}, mod(floor(${U_GRID_LIGHTING}[i]/pow(2.,bit)), 2.)*5.);
-            } 
-            bit -= ${CONST_GL_SAFE_BITS}.;
-        }
-        ${L_GRID_COLOR} = mix(${U_LINE_COLOR}, ${L_GRID_COLOR}, sqrt(${L_GRID_POWER}));
-        ${L_LINE_COLOR} = ${L_GRID_COLOR};
-        ${L_FILL_COLOR} = ${U_FILL_COLOR};
-    }
-    vec4 current = vec4(mix(${L_LINE_COLOR}, max(mix(vec3(0.), ${L_FILL_COLOR}, ${L_LIGHTING}), ${L_GRID_COLOR} * ${C_GRID_LIGHT_MULTIPLIER}*(1.-min((${V_VERTEX_POSITION}.z-(${V_VERTEX_POSITION}.x-${U_DIRECTED_LIGHTING_RANGE}.x)*${U_DIRECTED_LIGHTING_RANGE}.y-${U_DIRECTED_LIGHTING_RANGE}.z)/${U_DIRECTED_LIGHTING_RANGE}.w,1.))),${L_TILENESS}), ${L_FOGGINESS});
-    // blur
-    vec2 textureCoordinate = (${V_SCREEN_COORDINATE}.xy/${V_SCREEN_COORDINATE}.w)/2. + .5;
-    float count = 0.;
-    vec4 previous = ${F_GET_SAMPLE_COLOR}(textureCoordinate, 0, count);
-    for( int i=1; i<${C_BLUR_ITERATIONS}; ++i ) {
-        //float f = float(i*i+2)/2.;
-        float f = float(i);
-        previous += ${F_GET_SAMPLE_COLOR}(textureCoordinate + vec2(${U_PREVIOUS_DIMENSION}.x, 0.) * f, i, count);
-        previous += ${F_GET_SAMPLE_COLOR}(textureCoordinate - vec2(${U_PREVIOUS_DIMENSION}.x, 0.) * f, i, count);
-        previous += ${F_GET_SAMPLE_COLOR}(textureCoordinate + vec2(0., ${U_PREVIOUS_DIMENSION}.y) * f, i, count);
-        previous += ${F_GET_SAMPLE_COLOR}(textureCoordinate - vec2(0., ${U_PREVIOUS_DIMENSION}.y) * f, i, count);
-    }
-    if( count > 0. ) {
-        previous /= count;          
-        float focus = sqrt(previous.a)*${U_CAMERA_LIGHT}.z;
-        current = vec4((current.rgb * focus + previous.rgb * (1. - focus))*${U_CAMERA_LIGHT}.w, current.a);
-    }
-
-    gl_FragColor = current;
-}
-`;
+float ${L_DISTANCE_SQUARED}=${V_RELATIVE_POSITION}.x*${V_RELATIVE_POSITION}.x+${V_RELATIVE_POSITION}.y*${V_RELATIVE_POSITION}.y+${V_RELATIVE_POSITION}.z*${V_RELATIVE_POSITION}.z;
+float ${L_DISTANCE}=sqrt(${L_DISTANCE_SQUARED});
+float ${L_FOGGINESS}=0.;
+if(${L_DISTANCE}<${CONST_VISIBLE_DISTANCE}.) {
+    ${L_FOGGINESS}=clamp((${CONST_VISIBLE_DISTANCE_SQUARED}.-${L_DISTANCE_SQUARED})/${CONST_VISIBLE_DISTANCE_SQUARED}.,0.,1.);}
+vec3 ${L_GRID_COLOR}=vec3(0.);
+float ${L_GRID_POWER}=0.;
+for(int i=0;i<${C_MAX_POWER_SOURCES};i++){
+    if(i<${U_POWER_SOURCE_COUNT}){
+        vec4 ${L_POWER_SOURCE}=${U_POWER_SOURCES}[i];
+        vec2 ${L_POWER_SOURCE_DELTA}=${L_POWER_SOURCE}.xy-${V_VERTEX_POSITION}.xy;
+        float ${L_POWER_SOURCE_DISTANCE}=sqrt(${L_POWER_SOURCE_DELTA}.x*${L_POWER_SOURCE_DELTA}.x+${L_POWER_SOURCE_DELTA}.y*${L_POWER_SOURCE_DELTA}.y);
+        if(${L_POWER_SOURCE_DISTANCE}<${L_POWER_SOURCE}.z){
+            float ${L_POWER}=${L_POWER_SOURCE_DISTANCE}/${L_POWER_SOURCE}.z;
+            float ${L_POWER_SQUARED}=1.-${L_POWER}*${L_POWER};
+            ${L_GRID_POWER}+=${L_POWER_SQUARED};
+            ${L_GRID_COLOR}+=vec3(.5,${L_POWER_SOURCE}.w,.5-${L_POWER_SOURCE}.w)*${L_POWER_SQUARED};}}}
+if(${L_GRID_POWER}>0.){
+    ${L_GRID_COLOR}/=${L_GRID_POWER};}
+float ${L_LIGHTING}=clamp(1.-${L_DISTANCE}/${U_CAMERA_LIGHT}.x,0.,1.)*-dot(${V_RELATIVE_POSITION}/${L_DISTANCE},${V_NORMAL_LIGHTING}.xyz)*${U_CAMERA_LIGHT}.y+${U_AMBIENT_LIGHT}+${V_NORMAL_LIGHTING}.w;
+float ${L_TILENESS}=1.;
+vec3 ${L_FILL_COLOR};
+vec3 ${L_LINE_COLOR};
+if(${U_GRID_MODE}>0){
+    vec3 ${L_FWIDTH}=smoothstep(vec3(0.0),fwidth(${V_GRID_COORDINATE}.xyz)*max(1.,${C_LINE_WIDTH}*(1.-${L_DISTANCE}/${CONST_VISIBLE_DISTANCE}.)),${V_GRID_COORDINATE}.xyz);
+    ${L_TILENESS}=min(min(${L_FWIDTH}.x,${L_FWIDTH}.y),${L_FWIDTH}.z);
+    ${L_FILL_COLOR}=${U_FILL_COLOR};
+    ${L_LINE_COLOR}=${U_LINE_COLOR};
+}else{ 
+    vec4 ${L_FLOOR_GRID_COORDINATE}=floor(${V_GRID_COORDINATE});
+    float ${L_LINE_DELTA_MIN}=min(${V_GRID_COORDINATE}.x-${L_FLOOR_GRID_COORDINATE}.x,(${V_GRID_COORDINATE}.y-${L_FLOOR_GRID_COORDINATE}.y)*${V_GRID_COORDINATE}.z);
+    float ${L_LINE_DELTA_MAX}=max(${V_GRID_COORDINATE}.x-${L_FLOOR_GRID_COORDINATE}.x,1.-(1.-${V_GRID_COORDINATE}.y+${L_FLOOR_GRID_COORDINATE}.y)*${V_GRID_COORDINATE}.z);
+    float ${L_LINE_WIDTH}=(1.+${L_GRID_POWER}*${L_GRID_POWER})*${V_GRID_COORDINATE}.w; 
+    if(${L_LINE_DELTA_MIN}<${L_LINE_WIDTH}||${L_LINE_DELTA_MAX}>(1.-${L_LINE_WIDTH})){
+        ${L_TILENESS}=min(${L_LINE_DELTA_MIN},1.-${L_LINE_DELTA_MAX})/${L_LINE_WIDTH}*(1.-max(0.,${L_DISTANCE}/${CONST_VISIBLE_DISTANCE}.))*(1.-${L_LINE_WIDTH})+${L_LINE_WIDTH};
+        ${L_TILENESS}*=${L_TILENESS}*${L_TILENESS};}
+    float ${L_BIT} = ${L_FLOOR_GRID_COORDINATE}.y*${U_GRID_DIMENSION}.x+${L_FLOOR_GRID_COORDINATE}.x;
+    for(int i=0;i<4;i++){
+        if(${L_BIT}<${CONST_GL_SAFE_BITS}.&&${L_BIT}>=0.) {
+            ${L_LIGHTING}=max(${L_LIGHTING},mod(floor(${U_GRID_LIGHTING}[i]/pow(2.,${L_BIT})), 2.)*5.);}
+        ${L_BIT}-=${CONST_GL_SAFE_BITS}.;}
+    ${L_GRID_COLOR}=mix(${U_LINE_COLOR},${L_GRID_COLOR},sqrt(${L_GRID_POWER}));
+    ${L_LINE_COLOR}=${L_GRID_COLOR};
+    ${L_FILL_COLOR}=${U_FILL_COLOR};}
+vec4 ${L_CURRENT_COLOR}=vec4(mix(${L_LINE_COLOR},max(mix(vec3(0.),${L_FILL_COLOR},${L_LIGHTING}),${L_GRID_COLOR}*${C_GRID_LIGHT_MULTIPLIER}*(1.-min((${V_VERTEX_POSITION}.z-(${V_VERTEX_POSITION}.x-${U_DIRECTED_LIGHTING_RANGE}.x)*${U_DIRECTED_LIGHTING_RANGE}.y-${U_DIRECTED_LIGHTING_RANGE}.z)/${U_DIRECTED_LIGHTING_RANGE}.w,1.))),${L_TILENESS}), ${L_FOGGINESS});
+vec2 ${L_TEXTURE_COORDINATE}=(${V_SCREEN_COORDINATE}.xy/${V_SCREEN_COORDINATE}.w)/2.+.5;
+float ${L_COUNT}=0.;
+vec4 ${L_PREVIOUS_COLOR}=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE},0,${L_COUNT});
+for(int i=1;i<${C_BLUR_ITERATIONS};++i){
+    float fi=float(i);
+    ${L_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}+vec2(${U_PREVIOUS_DIMENSION}.x,0.)*fi,i,${L_COUNT});
+    ${L_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}-vec2(${U_PREVIOUS_DIMENSION}.x,0.)*fi,i,${L_COUNT});
+    ${L_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}+vec2(0.,${U_PREVIOUS_DIMENSION}.y)*fi,i,${L_COUNT});
+    ${L_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}-vec2(0.,${U_PREVIOUS_DIMENSION}.y)*fi,i,${L_COUNT});}
+if(${L_COUNT}>0.){
+    ${L_PREVIOUS_COLOR}/=${L_COUNT};
+    float ${L_FOCUS}=sqrt(${L_PREVIOUS_COLOR}.a)*${U_CAMERA_LIGHT}.z;
+    ${L_CURRENT_COLOR}=vec4((${L_CURRENT_COLOR}.rgb*${L_FOCUS}+${L_PREVIOUS_COLOR}.rgb*(1.-${L_FOCUS}))*${U_CAMERA_LIGHT}.w,${L_CURRENT_COLOR}.a);}
+gl_FragColor = ${L_CURRENT_COLOR};}`;
 
 interface ShowPlay {
     (restart: ()=> void) : void;
@@ -247,7 +232,12 @@ function initShowPlay(
     let aspectRatio: number;
 
     let shootSound = webAudioBoomSoundFactory(audioContext, .3, .01, 399, .9, .5);
-    let powerupSound = webAudioVibratoSound3DFactory(audioContext, .2, 0, .1, .05, 'square', 1999, 600);
+    let powerupSound = webAudioVibratoSound3DFactory(audioContext, .2, 0, .1, .05, 'square', 999, 1999, 600);
+    let deathSound = webAudioBoomSoundFactory(
+        audioContext, 2, .2, 499, 1.5, 1, 
+        webAudioVibratoSound3DFactory(audioContext, .5, 0, .4, .2, 'sawtooth', 300, -100)
+    );
+    let stepSound = webAudioBoomSoundFactory(audioContext, .05, .01, 2000, .1, .05);
     
  
     // NOTE: regenerate should be a boolean really, but onresize passes some truthy value
@@ -382,7 +372,6 @@ function initShowPlay(
     let uPreviousViewMatrix = gl.getUniformLocation(shaderProgram, U_PREVIOUS_VIEW_MATRIX);
     let uFillColor = gl.getUniformLocation(shaderProgram, U_FILL_COLOR);
     let uLineColor = gl.getUniformLocation(shaderProgram, U_LINE_COLOR);
-    let uLineWidth = gl.getUniformLocation(shaderProgram, U_LINE_WIDTH);
     let uCameraLight = gl.getUniformLocation(shaderProgram, U_CAMERA_LIGHT);
     let uAmbientLight = gl.getUniformLocation(shaderProgram, U_AMBIENT_LIGHT);
     let uPrevious = gl.getUniformLocation(shaderProgram, U_PREVIOUS);
@@ -530,10 +519,11 @@ function initShowPlay(
         player.lineColor = CONST_FRIENDLY_LINE_COLOR;
         player.fillColor = CONST_FRIENDLY_FILL_COLOR;
         // make it look like a gun
-        let scale = .15;
+        let scale = .2;
         player.die = function() {
             player.deathAge = player.age;
             say("HULL FAILURE");
+            deathSound(player.x, player.y, player.z);
         }
         
         player.specialMatrix = matrix4MultiplyStack([
@@ -576,7 +566,7 @@ function initShowPlay(
                 return result;
             }
         }
-        player.update = function(this: Monster, world: World, amt: number) {
+        player.onUpdate = function(this: Monster, world: World, amt: number) {
             let left = keyStates[37] || keyStates[65];
             let right = keyStates[39] || keyStates[68];
             let forward = Math.max(keyStates[38], keyStates[87]);
@@ -608,6 +598,7 @@ function initShowPlay(
                 vx -= baseVelocity * cosZSide;
                 vy -= baseVelocity * sinZSide;
             }
+            let previousWalkCos = Math.cos(walkDistance);
             if( forward ) {
                 vx += forwardVelocity * cosZ;
                 vy += forwardVelocity * sinZ;
@@ -617,6 +608,10 @@ function initShowPlay(
                 vx -= baseVelocity * cosZ;
                 vy -= baseVelocity * sinZ;
                 walkDistance -= baseVelocity * amt;
+            }
+            let walkCos =Math.cos(walkDistance); 
+            if( walkCos >= 0 && previousWalkCos < 0 || walkCos < 0 && previousWalkCos >= 0) {
+                stepSound(player.x, player.y, player.z - player.radius);
             }
             if( FLAG_ALLOW_JUMPING && jumping && lastFloor > jumping ) {
                 player.vz = .015;
@@ -682,7 +677,7 @@ function initShowPlay(
                     bullet.side = SIDE_NEUTRAL;
                     bullet.sound = null;
                     bullet.onCollision = function(this: Monster, world: World, withEntity: Entity) {
-                        if( !FLAG_TEST_PHYSICS ) {
+                        if( !FLAG_TEST_PHYSICS && withEntity.side != SIDE_POWERUPS ) {
                             bullet.die(world, withEntity);  
                         }
                         if( withEntity.type ) {                            
@@ -833,7 +828,6 @@ function initShowPlay(
                             }
                             gl.uniform1f(uCycleRadians, cycle * Math.PI * 2);
                             gl.uniform1f(uOffsetMultiplier, offsetMultiplier);
-                            gl.uniform1f(uLineWidth, monster.lineWidth);
             
                             let modelMatrix = matrix4MultiplyStack(matrixStack);
                             gl.uniformMatrix4fv(uModelMatrix, false, modelMatrix);
@@ -864,14 +858,14 @@ function initShowPlay(
         }
 
         let previousViewMatrix = matrix4Identity();
-        let update = function(now: number) {
+        let _update = function(now: number) {
             
-            animationFrameHandle = requestAnimationFrame(update);
+            animationFrameHandle = requestAnimationFrame(_update);
 
             let diff = Math.min(CONST_MAX_FRAME_DURATION, now - then);
             then = now;
 
-            world.update(diff);
+            world.updateWorld(diff);
 
             if( FLAG_BLOOM ) {
                 gl.bindTexture(gl.TEXTURE_2D, targetTexture);            
@@ -1052,7 +1046,7 @@ function initShowPlay(
             }
             context.globalAlpha = 1;
         }   
-        update(0);     
+        _update(0);     
     
     }
     return play;

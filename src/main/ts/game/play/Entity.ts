@@ -20,7 +20,7 @@ interface EntityBase {
 
 interface Updatable {
     age: number;
-    update(world: World, diff: number): any;
+    onUpdate(world: World, diff: number): any;
 }
 
 interface Bounded {
@@ -49,7 +49,6 @@ interface Monster extends EntityBase, Updatable, Bounded, Rendered {
     ry: number; 
     rz: number;
     lineColor: Vector3;
-    lineWidth: number;
     specialMatrix?: Matrix4;
     lastDamageAge?: number;
     deathAge?: number;
@@ -378,8 +377,6 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                 lineColor.unshift(low + rng()*lowVariance);
             }
         }
-
-        let lineWidth = 2;
 
         let ry = shift(1) * Math.PI/2;     
         
@@ -1040,13 +1037,12 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             id: nextId++,
             radius: radius, 
             lineColor: lineColor, 
-            lineWidth: lineWidth,
             fillColor: fillColor,
             x: x, 
             y: y, 
             z: z, 
             restitution: restitution,
-            update: updater,
+            onUpdate: updater,
             onCollision: function(this: Monster, world: World, entity: Entity) {
                 if( entity.type  ) {
                     if( !FLAG_TEST_PHYSICS && 

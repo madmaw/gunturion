@@ -5,20 +5,23 @@ function webAudioVibratoSound3DFactory(
     attackVolume: number,
     sustainVolume: number, 
     oscillatorType: OscillatorType, 
-    oscillatorFrequency: number,
+    oscillatorStartFrequency: number,
+    oscillatorEndFrequency: number,
     filterFrequency?: number,
     vibratoType?: OscillatorType,
     vibratoFrequency?: number
 ): Sound3D {
 
     return function (x: number, y: number, z: number) {
+        let now = audioContext.currentTime;
         let oscillator = audioContext.createOscillator();
-        oscillator.frequency.value = oscillatorFrequency;
+        oscillator.frequency.setValueAtTime(oscillatorStartFrequency, now);
+        oscillator.frequency.linearRampToValueAtTime(oscillatorEndFrequency, now + durationSeconds);
         oscillator.type = oscillatorType;
 
         let gain = audioContext.createGain();
         var decay = durationSeconds * .2;
-        linearRampGain(gain, audioContext.currentTime, attackVolume, sustainVolume, attackSeconds, decay, null, durationSeconds);
+        linearRampGain(gain, now, attackVolume, sustainVolume, attackSeconds, decay, null, durationSeconds);
 
         let vibrato: OscillatorNode;
         let vibratoGain: GainNode;
