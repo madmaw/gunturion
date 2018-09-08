@@ -275,16 +275,18 @@ class World {
                                                 let odz = relativeOrigin[2];
                                                 let odsq = odx*odx+ody*ody+odz*odz
                                                 if( odsq < updatableMonster.radius*updatableMonster.radius || vector2PolyContains(surface.points, relativeOrigin[0], relativeOrigin[1]) && odz < updatableMonster.radius ) {
-                                                    console.warn(
-                                                        'started colliding with polygon, this will end badly', 
-                                                        {
-                                                            currentPosition: [originalX, originalY, originalZ], 
-                                                            currentVelocity: [updatableMonster.vx, updatableMonster.vy, updatableMonster.vz], 
-                                                            previousPosition: updatableMonster.previousPosition, 
-                                                            previousVelocity: updatableMonster.previousVelocity,
-                                                            entity: updatableEntity 
-                                                        }
-                                                    );
+													if( FLAG_WARN_INVALID_START_POSITION ) {
+														console.warn(
+															'started colliding with polygon, this will end badly', 
+															{
+																currentPosition: [originalX, originalY, originalZ], 
+																currentVelocity: [updatableMonster.vx, updatableMonster.vy, updatableMonster.vz], 
+																previousPosition: updatableMonster.previousPosition, 
+																previousVelocity: updatableMonster.previousVelocity,
+																entity: updatableEntity 
+															}
+														);	
+													}
                                                     // kill it
                                                     updatableMonster.die(this);
                                                 }    

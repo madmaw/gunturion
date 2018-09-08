@@ -390,11 +390,13 @@ function initShowPlay(
     let play = function(onRestart: () => void) {
         let animationFrameHandle: number;
         let destroy = function() {
-            window.cancelAnimationFrame(animationFrameHandle);
-            canvas.className = '';
-            if( !FLAG_BLOOM ) {
-                offscreenCanvas.className = 'v';
-            }
+			window.cancelAnimationFrame(animationFrameHandle);
+			if( !FLAG_NO_LOADING ) {
+				canvas.className = '';
+				if( !FLAG_BLOOM ) {
+					offscreenCanvas.className = 'v';
+				}	
+			}
             if( FLAG_CLEANUP_EVENT_HANDLERS_ON_DESTROY ) {
                 window.onresize = null;
                 window.onkeydown = null;
@@ -553,7 +555,7 @@ function initShowPlay(
                         powerupSound(player.x, player.y, player.z);
                     } else {
                         if( !FLAG_TEST_PHYSICS ) {
-                            this.die(world, other);
+                            player.die(world, other);
                         }    
                     }
                 } else {

@@ -3,7 +3,10 @@ window.onload = function() {
 
     let offscreenCanvas = document.getElementById('a') as HTMLCanvasElement;
 
-    let loadingElement = document.getElementById('l');
+	let loadingElement: HTMLElement;
+	if( !FLAG_NO_LOADING ) {
+		loadingElement = document.getElementById('l');
+	}
 
     let audioContext = new AudioContext();
 
@@ -47,7 +50,8 @@ window.onload = function() {
     }
 
     //initTest();
-    
-    loadingElement.className = '';
+    if( !FLAG_NO_LOADING ) {
+	    loadingElement.className = '';
+	}
     
 };

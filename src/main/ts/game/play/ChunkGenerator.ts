@@ -148,10 +148,12 @@ function flatChunkGeneratorFactory(
             let walls: Surface[] = [];
             let maxSpawnCount = 0;
             let maxHealth = 0;
-            let fillColor = liberated?goodFillColor:badFillColor;
+			let fillColor = liberated?goodFillColor:badFillColor;
             let onCollision = function(this: Surface, world: World, entity: Entity) {
                 if( entity.side == SIDE_NEUTRAL ) {
-                    this.lastDamageAge = world.age;
+                    for( let wall of walls ) {
+						wall.lastDamageAge = world.age;
+					}
                     // it's a player's bullet
                     if( damage < maxHealth ) {
                         damage++;

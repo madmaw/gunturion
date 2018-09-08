@@ -14,7 +14,7 @@ module.exports = function (grunt) {
         },
         watch: {
             default: {
-                files: ["src/main/ts/**/*", "index.html"], 
+                files: ["src/main/ts/**/*", "index.html", "index.css"], 
                 tasks: ['ts:dist'],
                 options: {
                     livereload: true
@@ -47,8 +47,27 @@ module.exports = function (grunt) {
                     externs: 'src/main/externs/externs.js'
                 }
             }
-
-        },
+		},
+		cssmin: {
+			options: {
+			},
+			target: {
+			  	files: {
+					'dist/index.css': ['dist/index.css']
+			  	}
+			}
+		},
+		htmlmin: {                                     
+			dist: {
+				options: {
+					removeComments: true,
+					collapseWhitespace: true
+				},
+				files: {                                   
+					'dist/index.html': 'dist/index.html'
+				}	
+			}
+		},
         inline: {
             dist: {
                 src: 'dist/index.html',
@@ -59,10 +78,10 @@ module.exports = function (grunt) {
             js13k: {
                 src: ['dist/out.min.js'],
                 overwrite: true,
-                replacements: [/*{
+                replacements: [{
                     from: /(=|:|return |\(|,)function\(([^\)]*)\)/g, 
                     to:"$1($2)=>"
-                }*/ /*, {
+                } /*, {
                     from: /var [^;=]*;/g, 
                     to: ""
                 }*/, {
@@ -95,7 +114,8 @@ module.exports = function (grunt) {
         copy: {
             html: {
                 files: [
-                    {expand: true, src: ['index.html'], dest: 'dist/'}
+                    {expand: true, src: ['index.html'], dest: 'dist/'},
+                    {expand: true, src: ['index.css'], dest: 'dist/'}
                 ]
             }
         },
@@ -129,12 +149,16 @@ module.exports = function (grunt) {
     // server for live reload
     grunt.loadNpmTasks('grunt-contrib-connect');
     // copying html
-    grunt.loadNpmTasks('grunt-contrib-copy');
+	grunt.loadNpmTasks('grunt-contrib-copy');
+	// minifying css
+	grunt.loadNpmTasks('grunt-contrib-cssmin');
+	// minifying html
+	grunt.loadNpmTasks('grunt-contrib-htmlmin');
 
     // Default task(s).
     grunt.registerTask('reset', ['clean:all']);
     grunt.registerTask('prod', ['ts:dist']);
-    grunt.registerTask('js13k', ['prod', 'closure-compiler:js13k', 'replace:js13k', 'copy','replace:html', 'inline']);
+    grunt.registerTask('js13k', ['prod', 'closure-compiler:js13k', 'replace:js13k', 'copy','cssmin','replace:html', 'inline', 'htmlmin']);
     grunt.registerTask('default', ['prod', 'connect', 'watch']);
 
 };

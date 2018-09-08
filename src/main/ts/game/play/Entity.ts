@@ -271,14 +271,6 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
 
     let nextId = 0;
 
-
-    let bounds = function(this: Monster): Rect3 {
-        return {
-            min: [this.x - this.radius, this.y - this.radius, this.z - this.radius], 
-            max: [this.x + this.radius, this.y + this.radius, this.z + this.radius]
-        }
-    };
-
     function fib(i: number) {
         let prev = 1;
         let f = 1;
@@ -1031,6 +1023,13 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         }        
         let health = (radius * radius * 4) | 0;
 
+		let bounds = function(): Rect3 {
+			return {
+				min: [monster.x - monster.radius, monster.y - monster.radius, monster.z - monster.radius], 
+				max: [monster.x + monster.radius, monster.y + monster.radius, monster.z + monster.radius]
+			}
+		};
+	
         let monster: Monster ={
             type: 1, 
             seed: seed,

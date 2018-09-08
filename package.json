@@ -23,6 +23,8 @@
     "grunt-contrib-clean": "^1.1.0",
     "grunt-contrib-connect": "^1.0.2",
     "grunt-contrib-copy": "^1.0.0",
+    "grunt-contrib-cssmin": "^3.0.0",
+    "grunt-contrib-htmlmin": "^3.0.0",
     "grunt-contrib-watch": "^1.1.0",
     "grunt-dev-update": "^2.3.0",
     "grunt-inline": "^0.3.6",
