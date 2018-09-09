@@ -21,7 +21,7 @@ const V_NORMAL_LIGHTING = FLAG_SHORTEN_GLSL_VARIABLES?'r':'vNormalLighting_';
 const V_VERTEX_POSITION = FLAG_SHORTEN_GLSL_VARIABLES?'s':'vVertexPosition_';
 
 const C_BLUR_ITERATIONS = FLAG_BLOOM?7:0;
-const C_MAX_POWER_SOURCES = 9;
+const C_MAX_POWER_SOURCES = 16;
 const C_GRID_LIGHT_MULTIPLIER = '.4';
 const C_LINE_WIDTH = '.2';
 
@@ -203,12 +203,10 @@ interface ShowPlay {
 function initShowPlay(
     seed: number,
     rngFactory: RandomNumberGeneratorFactory,
-    offscreenCanvas: HTMLCanvasElement,
-    gl: WebGLRenderingContext,
-    chunkGenerator: ChunkGenerator, 
-    monsterGenerator: MonsterGenerator, 
     audioContext: AudioContext 
 ): ShowPlay {
+    let offscreenCanvas = document.getElementById('a') as HTMLCanvasElement;
+    let gl = offscreenCanvas.getContext('webgl');
     let canvas = document.getElementById('b') as HTMLCanvasElement;
     let context = canvas.getContext('2d');
     let skybox = document.createElement('img');
@@ -218,6 +216,9 @@ function initShowPlay(
     } else {
         inputCanvas = offscreenCanvas;
     }
+
+	let monsterGenerator = monsterGeneratorFactory(gl, rngFactory, audioContext);
+	let surfaceGenerator = surfaceGeneratorFactory(gl);
 
     let textureData: Uint8Array;
     let textureImageData: ImageData;
@@ -232,12 +233,10 @@ function initShowPlay(
     let aspectRatio: number;
 
     let shootSound = webAudioBoomSoundFactory(audioContext, .3, .01, 399, .9, .5);
-    let powerupSound = webAudioVibratoSound3DFactory(audioContext, .2, 0, .1, .05, 'square', 999, 1999, 600);
-    let deathSound = webAudioBoomSoundFactory(
-        audioContext, 2, .2, 499, 1.5, 1, 
-        webAudioVibratoSound3DFactory(audioContext, .5, 0, .4, .2, 'sawtooth', 300, -100)
-    );
-    let stepSound = webAudioBoomSoundFactory(audioContext, .05, .01, 2000, .1, .05);
+    let powerupSound = webAudioVibratoSound3DFactory(audioContext, .2, 0, .1, .05, 'square', 999, 1999, 599);
+    let deathSound = webAudioBoomSoundFactory(audioContext, 2, .2, 499, 1.5, 1);
+	let painSound = webAudioVibratoSound3DFactory(audioContext, .5, 0, .4, .2, 'sawtooth', 299, -99);
+    let stepSound = webAudioBoomSoundFactory(audioContext, .05, .01, 1999, .1, .05);
     
  
     // NOTE: regenerate should be a boolean really, but onresize passes some truthy value
@@ -412,11 +411,12 @@ function initShowPlay(
             }
             resize();
         }
-    
-        canvas.className = 'v';
-        if( !FLAG_BLOOM ) {
-            offscreenCanvas.className = 'v';
-        }
+		if( !FLAG_NO_LOADING ) {
+			canvas.className = 'v';
+			if( !FLAG_BLOOM ) {
+				offscreenCanvas.className = 'v';
+			}	
+		}
     
         resize(1); 
     
@@ -430,14 +430,6 @@ function initShowPlay(
             pos = [0, 0, 0];
         }
         
-        let world = new World(
-            chunkGenerator, 
-            monsterGenerator, 
-            pos
-        );
-
-        let displayMessageTime: number;
-        let displayMessage: string;
         let say = function(message: string, pronunciation?: string) {
             if( FLAG_SPEECH && window.speechSynthesis ) {
                 let ut = new SpeechSynthesisUtterance(pronunciation?pronunciation:message);
@@ -450,6 +442,11 @@ function initShowPlay(
             displayMessage = message;
             displayMessageTime = world.age;
         }
+		let chunkGenerator = flatChunkGeneratorFactory(seed, surfaceGenerator, monsterGenerator, rngFactory, audioContext, say);
+        let world = initWorld(chunkGenerator, pos);
+
+        let displayMessageTime: number;
+        let displayMessage: string;
 
         let then = 0;
         let frames = 0;
@@ -525,7 +522,9 @@ function initShowPlay(
         player.die = function() {
             player.deathAge = player.age;
             say("HULL FAILURE");
-            deathSound(player.x, player.y, player.z);
+			deathSound(player.x, player.y, player.z);
+			// reset the bloom so the world is pretty
+			battery = maxBattery;
         }
         
         player.specialMatrix = matrix4MultiplyStack([
@@ -539,10 +538,12 @@ function initShowPlay(
         let maxBattery = Math.pow(batteryLevel, CONST_BATTERY_LEVEL_EXPONENT);
         let battery = maxBattery;
         let lastBattery = battery;
-        let lastBatteryBoost = 0;
+		let lastBatteryBoost = 0;
+		let lastHit = 0;
         let lastFloor = 0;
         let lastPower = 0;
-        let hasBeenOffline: number;
+		let weaponHasBeenOffline: number;
+		let shieldHasBeenOffline: number;
         if( FLAG_ALLOW_JUMPING ) {
             player.onCollision = function(this: Monster, world: World, other: Entity) {
                 let result: number;
@@ -555,7 +556,18 @@ function initShowPlay(
                         powerupSound(player.x, player.y, player.z);
                     } else {
                         if( !FLAG_TEST_PHYSICS ) {
-                            player.die(world, other);
+							painSound(player.x, player.y, player.z);
+							if( battery >= CONST_BATTERY_WARNING ) {
+								// kill the monster, survive
+								battery -= CONST_BATTERY_WARNING;
+								lastHit = world.age;
+								lastShot = world.age + CONST_WINCE_DURATION;
+								let otherMonster = other as Monster;
+								otherMonster.deathAge = otherMonster.age;
+							} else {
+								player.die(world, other);
+
+							}
                         }    
                     }
                 } else {
@@ -647,12 +659,12 @@ function initShowPlay(
                     let dy = player.y - buildingY;
                     let dsq = dx * dx + dy * dy;
                     if ( dsq < building.power * building.power ) {
-                        let p = Math.sqrt(dsq)/building.power;
+                        let p = Math.sqrt(dsq)*building.friendliness/building.power;
                         let v = 1 - p*p;
                         power += v;
                     }
                 }
-                battery = Math.min(maxBattery, battery + power/amt);
+                battery = Math.min(maxBattery, battery + Math.sqrt(power)/amt);
             }
             lastPower = power;
             if( shooting && battery >= CONST_BASE_BULLET_COST ) {
@@ -668,7 +680,7 @@ function initShowPlay(
                     }
                     // shoot
                     let bullet = monsterGenerator(
-                        818, 
+                        player.seed, 
                         player.x + player.radius*cosZSide/CONST_GUN_BARREL_OFFSET_DIV + player.radius*cosZ*(CONST_GUN_BARREL_LENGTH_MULT+CONST_BULLET_RADIUS), 
                         player.y + player.radius*sinZSide/CONST_GUN_BARREL_OFFSET_DIV + player.radius*sinZ*(CONST_GUN_BARREL_LENGTH_MULT+CONST_BULLET_RADIUS), 
                         player.z + sinX * player.radius*(CONST_GUN_BARREL_LENGTH_MULT + CONST_BULLET_RADIUS), 
@@ -678,11 +690,11 @@ function initShowPlay(
                     shootSound(player.x, player.y, player.z);
                     bullet.side = SIDE_NEUTRAL;
                     bullet.sound = null;
-                    bullet.onCollision = function(this: Monster, world: World, withEntity: Entity) {
+                    bullet.onCollision = function(world: World, withEntity: Entity) {
                         if( !FLAG_TEST_PHYSICS && withEntity.side != SIDE_POWERUPS ) {
-                            bullet.die(world, withEntity);  
+							bullet.die(world, withEntity);  
                         }
-                        if( withEntity.type ) {                            
+                        if( withEntity.type ) {
                             if( FLAG_LOG_KILLS ) {
                                 console.log('killed seed', (withEntity as Monster).seed);
                             }
@@ -690,12 +702,12 @@ function initShowPlay(
                     }
                     if( FLAG_TEST_PHYSICS ) {
                         bullet.restitution = 1;
-                    }
+                    } 
                     bullet.vx = cosX * cosZ * CONST_BULLET_VELOCITY;
                     bullet.vy = cosX * sinZ * CONST_BULLET_VELOCITY;
                     bullet.vz = sinX * CONST_BULLET_VELOCITY;
-                    bullet.fillColor = player.fillColor;
-                    bullet.lineColor = player.lineColor;
+                    bullet.fillColor = CONST_FRIENDLY_BRIGHT_FILL_COLOR;
+                    bullet.lineColor = CONST_FRIENDLY_BRIGHT_LINE_COLOR;
                     bullet.gravityMultiplier = 0;
 
                     world.addEntity(bullet);
@@ -703,12 +715,17 @@ function initShowPlay(
             }
             if( lastBattery >= CONST_BASE_BULLET_COST && battery < CONST_BASE_BULLET_COST && !power ) {
                 // issue a warning
-                say("WEAPONS OFFLINE", 'WEAPONS OFF LINE');
-                hasBeenOffline = 1;
-            } else if( lastBattery < CONST_BASE_BULLET_COST && battery >= CONST_BASE_BULLET_COST && hasBeenOffline ) {
-                say('WEAPONS ONLINE');
-                hasBeenOffline = 0;
-            } 
+                say("WEAPON OFFLINE", 'WEAPON OFF LINE');
+				weaponHasBeenOffline = 1;
+			} else if( lastBattery >= CONST_BATTERY_WARNING && battery < CONST_BATTERY_WARNING && !shieldHasBeenOffline ) {
+				say("SHIELD OFFLINE", "SHEALED OFF LINE");
+				shieldHasBeenOffline = 1;
+			} else if( lastBattery < CONST_BASE_BULLET_COST && battery >= CONST_BASE_BULLET_COST && weaponHasBeenOffline ) {
+                say('WEAPON ONLINE');
+                weaponHasBeenOffline = 0;
+            } else if( battery > CONST_BATTERY_WARNING * 2 ) {
+				shieldHasBeenOffline = 0;
+			}
             lastBattery = battery;
         }
         world.addEntity(player);
@@ -759,8 +776,12 @@ function initShowPlay(
                 cameraLightIntensity += shotLightBonus;
                 // I don't think this will make much difference
                 //cameraLightDistance += shotLightBonus;
-            }
-            gl.uniform4f(uCameraLight, cameraLightDistance, cameraLightIntensity, CONST_BLUR, CONST_BLOOM);    
+			}
+			let wince = Math.max(
+				Math.min(0, (battery - CONST_BATTERY_WARNING) * CONST_BLUR/CONST_BATTERY_WARNING), 
+				(1 - (world.age - lastHit - CONST_WINCE_DURATION)) * CONST_WINCE_INTENSITY / CONST_WINCE_DURATION
+			); 
+            gl.uniform4f(uCameraLight, cameraLightDistance, cameraLightIntensity, CONST_BLUR - wince, CONST_BLOOM + wince);    
     
             // draw all the entities
             for( let side in world.allEntities ) {
@@ -1033,7 +1054,7 @@ function initShowPlay(
                         context.globalAlpha = p;
                         context.lineWidth = (1-p) * 9 + 1;
                     } else {
-                        context.lineWidth = 1;
+                        context.lineWidth = 2;
                     }    
                 }
                 context.strokeRect(canvasWidth - maxBattery - CONST_STATUS_HEIGHT, CONST_STATUS_HEIGHT, maxBattery, CONST_STATUS_HEIGHT);

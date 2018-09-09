@@ -7,14 +7,18 @@ function flatChunkGeneratorFactory(
     surfaceGenerator: SurfaceGenerator,
     monsterGenerator: MonsterGenerator, 
     rngFactory: RandomNumberGeneratorFactory,
-    audioContext: AudioContext
+	audioContext: AudioContext, 
+	say: (message: string, audioMessage?: string) => void
 ): ChunkGenerator {
 
     let neutralFillColor = [.3, .2, .3];
     let goodFillColor = [.4, .4, .1];
     let badFillColor = [.4, .1, .4];
 
-    let monsterBirthSound = webAudioVibratoSound3DFactory(audioContext, .4, 0, .2, .1, 'sine', 777, 333);//webAudioVibratoSound3DFactory(audioContext, .3, 0, .3, .1, 'sine', 555, 222, 200);
+	let monsterBirthSound = webAudioVibratoSound3DFactory(audioContext, .4, 0, .2, .1, 'sine', 777, 333);
+	let buildingConversionSound = webAudioVibratoSound3DFactory(audioContext, .5, 0, .4, .2, 'square', 299, 999, 0, 'sine', 30);
+	let buildingDamageSound = webAudioVibratoSound3DFactory(audioContext, .2, 0, .4, .2, 'sawtooth', -99, 299);
+
 
     function getFloorHeight(chunkX: number, chunkY: number) {
         // a lot of tiles aren't actually random
@@ -67,8 +71,8 @@ function flatChunkGeneratorFactory(
                 chunkX, chunkY, 
                 0, angle, 
                 neutralFillColor, 
-                // TODO adjust ratio so the lines match up with the walls
-                2, 2,
+                // adjust ratio so the lines match up with the walls
+                2 / Math.cos(angle), 2, 
                 directedLightingRange
             );    
         } else {
@@ -131,7 +135,7 @@ function flatChunkGeneratorFactory(
         //     let tz = getFloorHeight(tileX + dx, tileY + dy);
         //     building = building && tz <= z;
         // }
-        let liberated = localStorage.getItem(tileKey) || chunkX<3 || !tileRng(9);
+        let liberated: any = !tileRng(9+z) || localStorage.getItem(tileKey) || chunkX<3;
         
         if( building ) {
             let gap = 1;
@@ -149,14 +153,20 @@ function flatChunkGeneratorFactory(
             let maxSpawnCount = 0;
             let maxHealth = 0;
 			let fillColor = liberated?goodFillColor:badFillColor;
-            let onCollision = function(this: Surface, world: World, entity: Entity) {
-                if( entity.side == SIDE_NEUTRAL ) {
-                    for( let wall of walls ) {
+            let onCollision = function(world: World, entity: Entity) {
+				if( entity.side == SIDE_NEUTRAL ) {
+					// it's a player's bullet
+					for( let wall of walls ) {
 						wall.lastDamageAge = world.age;
 					}
-                    // it's a player's bullet
                     if( damage < maxHealth ) {
-                        damage++;
+						damage++;
+						if( damage >= maxHealth ) {
+							buildingConversionSound(x, y, z);
+							say("BUILDING LIBERATED");
+						} else {
+							buildingDamageSound(x, y, z);
+						}
                     }
                 }
             };
@@ -270,11 +280,11 @@ function flatChunkGeneratorFactory(
                 wall.gridLighting[index] = v;
             }
 
-            let spawn = function(now: number, target?: Monster): boolean {
+            let spawn = function(now: number, aggro: number, target?: Monster): boolean {
                 // find a surface facing the player
                 let monsterRadius = CONST_BASE_RADIUS;
                 let successfulSpawning: boolean;
-                let attemptsRemaining = 3;
+                let attemptsRemaining = Math.min(9, tileRng(9) + aggro/99 | 0);
                 while( !successfulSpawning && attemptsRemaining-- && spawnCount < maxSpawnCount ) {
                     if( spawning ) {
                         spawnGridX += tileRng(3) - 1;
@@ -330,7 +340,7 @@ function flatChunkGeneratorFactory(
 
             // spawn until our spawn count is high enough
             while( !liberated && spawnCount < maxSpawnCount ) {
-                spawn(0);
+                spawn(0, 0);
             }
 
             let buildingCx = chunkX * CONST_CHUNK_WIDTH + CONST_CHUNK_WIDTH/2;
@@ -355,7 +365,7 @@ function flatChunkGeneratorFactory(
                         if( player ) {
                             nextSpawn -= diff;
                             if( nextSpawn < 0 ) {
-                                let successfulSpawning = spawn(world.age, player);
+                                let successfulSpawning = spawn(world.age, world.previousAggro, player);
                                 if( successfulSpawning ) {
                                     nextSpawn += CONST_SPAWN_JUMP_INTERVAL;
                                 } else {
@@ -399,8 +409,9 @@ function flatChunkGeneratorFactory(
                         }
                     } else {
                         if( !liberated ) {
+							liberated = 1;
                             // save the fact we converted this building
-                            localStorage.setItem(tileKey, 'x');
+							localStorage.setItem(tileKey, 'x');
                             localStorage.setItem(''+seed, JSON.stringify([buildingCx, buildingCy, buildingZ]))
                             // turn off all the lights
                             for(let wallId in walls ) {

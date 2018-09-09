@@ -36,7 +36,8 @@ function webAudioVibratoSound3DFactory(
             vibrato.connect(vibratoGain);
             vibratoGain.connect(oscillator.detune);
 
-            vibrato.start();
+			vibrato.start();
+			vibrato.stop(now + durationSeconds);
         }
 
         if( filterFrequency ) {
@@ -63,18 +64,11 @@ function webAudioVibratoSound3DFactory(
         panner.setPosition(x, y, z);
 
         oscillator.start();    
+		oscillator.stop(now + durationSeconds);
+		oscillator.onended = function() {
+			panner.disconnect();
+		}
 
-        setTimeout(function() {
-            oscillator.disconnect();
-            gain.disconnect();
-            if( vibrato ) {
-                vibratoGain.disconnect();
-                vibrato.stop();
-            }
-            oscillator.stop();
-            panner.disconnect();
-            oscillator = null;
-        }, durationSeconds*999);
     }
 }
 

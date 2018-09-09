@@ -100,7 +100,7 @@ module.exports = function (grunt) {
                     // note, this is a symptom that TS is initalizing your local vars (which you don't want)
                     from: /void 0/g,
                     to: "0"
-                }*/]
+				}*/]
             }, 
             html: {
                 src: ['dist/index.html'],

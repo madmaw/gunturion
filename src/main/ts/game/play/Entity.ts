@@ -782,7 +782,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         }
         // jump
         if( !shift(2) ) {
-            let impulse = rng() * .009 + .004;
+            let impulse = rng() * .01 + .004;
             behaviours.push(function(world: World, diff: number, takenFlags: number) {
                 if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT) ) {
                     // have we hit a floor?
@@ -1102,7 +1102,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                             let gem = monsterGenerator(
                                 4195348, 
                                 monster.x + cos*CONST_SMALL_NUMBER, monster.y + sin*CONST_SMALL_NUMBER, monster.z, 
-                                .1, 
+                                .05, 
                                 4999,
                                 null, 
                                 .001
@@ -1111,8 +1111,8 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                             gem.vy = sin * CONST_GEM_VELOCITY;
 
                             gem.side = SIDE_POWERUPS;
-                            gem.lineColor = CONST_FRIENDLY_LINE_COLOR;
-                            gem.fillColor = CONST_FRIENDLY_FILL_COLOR;
+                            gem.lineColor = CONST_FRIENDLY_BRIGHT_LINE_COLOR;
+                            gem.fillColor = CONST_FRIENDLY_BRIGHT_FILL_COLOR;
                             world.addEntity(gem);
                         }
                     }

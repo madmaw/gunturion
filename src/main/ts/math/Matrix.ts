@@ -1,6 +1,6 @@
 type Matrix4 = number[];
 
-function matrix4Identity(): Matrix4 {
+let matrix4Identity = function(): Matrix4 {
     return [
         1, 0, 0, 0,
         0, 1, 0, 0,
@@ -9,7 +9,7 @@ function matrix4Identity(): Matrix4 {
     ];    
 }
 
-function matrix4Invert(a: Matrix4): Matrix4 {
+let matrix4Invert = function(a: Matrix4): Matrix4 {
 
     // TODO there's got to be a couple of loops that can achieve this effectively (and smaller)
     let a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3];
@@ -45,7 +45,7 @@ function matrix4Invert(a: Matrix4): Matrix4 {
 
 }
 
-function matrix4Multiply(a: Matrix4, b: Matrix4, out?: Matrix4): Matrix4 {
+let matrix4Multiply = function(a: Matrix4, b: Matrix4, out?: Matrix4): Matrix4 {
     if (!out) {
         out = matrix4Identity();
     }
@@ -62,7 +62,7 @@ function matrix4Multiply(a: Matrix4, b: Matrix4, out?: Matrix4): Matrix4 {
     return out;
 }
 
-function matrix4MultiplyStack(matrices: Matrix4[]): Matrix4 {
+let matrix4MultiplyStack = function(matrices: Matrix4[]): Matrix4 {
     let current = matrix4Identity();
     for( let matrix of matrices ) {
         if( matrix ) {
@@ -72,7 +72,7 @@ function matrix4MultiplyStack(matrices: Matrix4[]): Matrix4 {
     return current;
 }
 
-function matrix4Perspective(fovy: number, aspect: number, znear: number, zfar: number): Matrix4 {
+let matrix4Perspective = function(fovy: number, aspect: number, znear: number, zfar: number): Matrix4 {
 
     /*
     var top = znear * Math.tan(fovy / 2);

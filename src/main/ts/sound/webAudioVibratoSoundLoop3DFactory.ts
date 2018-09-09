@@ -60,12 +60,14 @@ function webAudioVibratoSoundLoop3DFactory(
             }, 
             stop: function() {
                 if( oscillator ) {
-                    oscillator.disconnect();
-                    gain.disconnect();
-                    vibratoGain.disconnect();
+					if( !FLAG_MINIMAL_AUDIO_CLEANUP ) {
+						oscillator.disconnect();
+						gain.disconnect();
+						vibratoGain.disconnect();
+					}
+                    panner.disconnect();
                     oscillator.stop();
                     vibrato.stop();
-                    panner.disconnect();
                     oscillator = null;
                 }
             }

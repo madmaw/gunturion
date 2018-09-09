@@ -4,102 +4,138 @@ interface CollisionPhysics {
     (): void;
 }
 
-class World {
+interface World {
     updatableEntities: (Monster | Building)[];
     allEntities: {[_: number]: Entity[]};
-    activeTiles: (Monster | Surface)[][][];
-    private activeTileArea: Rect2;
-    
+	
+	cameraX?: number;
+    cameraY?: number;
+    cameraZ?: number;
 
-    cameraX: number;
-    cameraY: number;
-    cameraZ: number;
-
-    cameraRotationX: number;
-    cameraRotationY: number;
-    cameraRotationZ: number;
+    cameraRotationX?: number;
+    cameraRotationY?: number;
+    cameraRotationZ?: number;
 
     age: number;
-    ticks: number;
-    bonusMillis: number;
 
-    public aggro: number;
-    public previousAggro: number;
+    aggro: number;
+    previousAggro: number;
 
-    private chunkDimensions: Vector2;
+	updateWorld(diff: number);
+	setCameraPosition(x: number, y: number, z: number, rotationX: number, rotationY: number, rotationZ: number);
+	addEntity(entity: Entity);
+	getEntitiesAt(x: number, y: number): Entity[];
+	getNearestEnemy(to: Monster, searchRadius?: number): Monster;
+	getNearest(x: number, y: number, targetSide: number, searchRadius?: number): Monster;
+}
 
-    constructor(
-        private chunkGenerator: ChunkGenerator,
-        private monsterCreator: MonsterGenerator,
-        cameraPosition: Vector3        
-    ) {
-        this.activeTiles = array2dCreate(
-            CONST_ACTIVE_CHUNKS_WIDTH, 
-            CONST_ACTIVE_CHUNKS_HEIGHT, 
-            function() {
-                return [];
+function initWorld(
+	chunkGenerator: ChunkGenerator,
+	cameraPosition: Vector3        
+): World {
+	let activeTiles = array2dCreate(
+		CONST_ACTIVE_CHUNKS_WIDTH, 
+		CONST_ACTIVE_CHUNKS_HEIGHT, 
+		function() {
+			return [];
+		}
+	);
+	let activeTileArea: Rect2;
+	
+	let bonusMillis = 0;
+	let chunkDimensions = [CONST_CHUNK_WIDTH, CONST_CHUNK_HEIGHT];
+
+	function iterateTiles(bounds: Rect2, f: (entities: (Monster | Surface)[], tileX?: number, tileY?: number) => void ): Rect2 {
+        let overlap = rect2Overlap(bounds, activeTileArea, chunkDimensions);
+        if( overlap ) {
+            let minTileX = overlap.min[0];
+            let minTileY = overlap.min[1];
+            let maxTileX = overlap.max[0];
+            let maxTileY = overlap.max[1];
+            
+            for( let x=minTileX; x<=maxTileX; x++ ) {
+                for( let y=minTileY; y<=maxTileY; y++ ) {
+                    
+                    f.call(world, world.getEntitiesAt(x, y), x, y);
+                }
             }
-        );
-        this.updatableEntities = [];
-        this.allEntities = {
-            0: [], 
-            1: [], 
-            2: [], 
-            3: [], 
-            4: [], 
-            5: []
-        };
-        this.age = 0;
-        this.ticks = 0;
-        this.bonusMillis = 0;
-        this.chunkDimensions = [CONST_CHUNK_WIDTH, CONST_CHUNK_HEIGHT];
-        this.setCameraPosition(cameraPosition[0], cameraPosition[1], cameraPosition[2], 0, 0, 0); 
-    }
-
-    public updateWorld(amt: number) {
-        if( CONST_FIXED_STEP ) {
-            let totalAmt = amt + this.bonusMillis;
-            while( totalAmt >= CONST_FIXED_STEP ) {
-                this.doUpdate(CONST_FIXED_STEP);
-                totalAmt -= CONST_FIXED_STEP;
-            }
-            this.bonusMillis = totalAmt;    
-        } else {
-            this.doUpdate(amt);
         }
+        return overlap;
     }
 
-    public doUpdate(amt: number) {
-        this.previousAggro = this.aggro;
-        this.aggro = 0;
-        this.age += amt;
-        this.ticks++;
-        let i=this.updatableEntities.length;
+	function addEntityPosition(entity: Monster | Surface): Rect2 {
+        return iterateTiles(entity.bounds(), function(entities: Entity[]) {
+            entities.push(entity);
+        });
+    }
+
+    function removeEntity(entity: Entity) {
+        if( entity.type ) {
+            arrayRemove(world.updatableEntities, entity);
+            if( entity.type == 1 && entity.sound ) {
+                entity.sound.stop();
+            }
+        }
+        let sideEntities = world.allEntities[entity.side];
+        if( sideEntities ) {
+            arrayRemove(sideEntities, entity);
+        }
+        if( entity.type != -1 ) {
+            removeEntityPosition(entity);
+        }
+        if( FLAG_CLEAN_UP_ENTITY ) {
+            entity.cleanup();
+        } 
+    }
+
+    function removeEntityPosition(entity: Monster | Surface) {
+        return iterateTiles(entity.bounds(), function(entities: Entity[]) {
+            arrayRemove(entities, entity);
+        });
+    }
+
+    function iterateEntities(bounds: Rect2, f: (entity: Monster | Surface) => void ) {
+        let iteratedEntities: {[_:number]: number} = {};
+        iterateTiles(bounds, function(entities: (Monster | Surface)[]) {
+            for( let entity of entities ) {
+                if( !iteratedEntities[entity.id] ) {
+                    f.call(world, entity);
+                    iteratedEntities[entity.id] = 1;
+                }
+            }
+        });
+    }
+
+	function doUpdate(amt: number) {
+        world.previousAggro = world.aggro;
+        world.aggro = 0;
+        world.age += amt;
+        let i=world.updatableEntities.length;
         while( i ) {
             i--;
-            let updatableEntity = this.updatableEntities[i];
+            let updatableEntity = world.updatableEntities[i];
 
             updatableEntity.age += amt;
             if( updatableEntity.type == 1 && updatableEntity.deathAge ) {
                 if( updatableEntity.age > updatableEntity.deathAge + CONST_DEATH_ANIMATION_TIME ) {
                     // remove 
-                    this.removeEntity(updatableEntity);
+                    removeEntity(updatableEntity);
                 }
             } else if( 
-                updatableEntity.type == 1 && !rect2Overlap(updatableEntity.bounds(), this.activeTileArea, this.chunkDimensions) || 
-                updatableEntity.type == -1 && !rect2Contains(this.activeTileArea, updatableEntity.chunkX, updatableEntity.chunkY)
+                updatableEntity.type == 1 && !rect2Overlap(updatableEntity.bounds(), activeTileArea, chunkDimensions) || 
+                updatableEntity.type == -1 && !rect2Contains(activeTileArea, updatableEntity.chunkX, updatableEntity.chunkY)
             ) {
                 // it's outside the active area, kill it
-                this.removeEntity(updatableEntity);
+                removeEntity(updatableEntity);
             } else {
-                let done = updatableEntity.onUpdate(this, amt);
+                let done = updatableEntity.onUpdate(world, amt);
 
                 // console.log('starting update');
                 // console.log('original position', activeMonster.x, activeMonster.y, activeMonster.z);
                 // console.log('velocity', activeMonster.vx, activeMonster.vy, activeMonster.vz);        
                 if( done ) {
                     // it wants to be removed
-                    this.removeEntity(updatableEntity);
+                    removeEntity(updatableEntity);
                 }
 
                 if( updatableEntity.type == 1 ) {
@@ -118,7 +154,7 @@ class World {
                         let originalY = updatableEntity.y;
                         let originalZ = updatableEntity.z;
 
-                        this.removeEntityPosition(updatableEntity); 
+                        removeEntityPosition(updatableEntity); 
 
                         // ensure velocity is sensible
                         if(FLAG_CHECK_MAX_VELOCITY ) {
@@ -153,7 +189,7 @@ class World {
                         let minCollisionEntity: Entity;
                         let minCollisionPhysics: CollisionPhysics;
         
-                        this.iterateEntities(bounds, function(this: World, collisionEntity: Entity) {
+                        iterateEntities(bounds, function(collisionEntity: Entity) {
                             let collisionTime: number;
                             let collisionPhysics: CollisionPhysics;
                             if( collisionEntity.type ) {
@@ -228,11 +264,11 @@ class World {
                                             }
                                         } else {
                                             // just report the collision to the entities (may not be accurate, but probably good enough)
-                                            monster.onCollision(this, updatableEntity);
+                                            monster.onCollision(world, updatableEntity);
                                             if( monster.deathAge ) {
-                                                this.removeEntityPosition(monster);
+                                                removeEntityPosition(monster);
                                             }
-                                            updatableMonster.onCollision(this, monster);
+                                            updatableMonster.onCollision(world, monster);
                                         }
 
                                     }
@@ -287,8 +323,10 @@ class World {
 															}
 														);	
 													}
-                                                    // kill it
-                                                    updatableMonster.die(this);
+													// kill it
+													if( updatableMonster.side != SIDE_PLAYER ) {
+														updatableMonster.die(world);
+													}
                                                 }    
                                             }                                        
                                         }
@@ -346,7 +384,7 @@ class World {
                                                                 minTime = testTime;
                                                             }
                                                         }
-                                                    }
+													}
                                                     if( collisionClosestPoint ) {
                                                         // check velocity at collision point (must actually be travelling toward the edge)
                                                         let angleZ = Math.atan2(
@@ -440,20 +478,20 @@ class World {
 
                             if( minCollisionEntity.type && FLAG_SPHERE_PHYSICS ) {
                                 let monster = minCollisionEntity as Monster;
-                                updatableEntity.onCollision(this, monster);
-                                monster.onCollision(this, updatableEntity);
+                                updatableEntity.onCollision(world, monster);
+                                monster.onCollision(world, updatableEntity);
                                 // if it's dead, remove it
                                 if( monster.deathAge ) {
-                                    this.removeEntityPosition(monster);
+                                    removeEntityPosition(monster);
                                 }
                             } else {
                                 //activeMonster.vx = activeMonster.vy = activeMonster.vz = 0;
                                 // bounce
                                 let surface = minCollisionEntity as Surface;
                                 if( surface.onCollision ) {
-                                    surface.onCollision(this, updatableEntity);                                    
+                                    surface.onCollision(world, updatableEntity);                                    
                                 }
-                                updatableEntity.onCollision(this, minCollisionEntity);
+                                updatableEntity.onCollision(world, minCollisionEntity);
                             }
                             if( minCollisionPhysics ) {
                                 minCollisionPhysics();
@@ -461,12 +499,12 @@ class World {
                             done = !collisionsRemaining-- || amtRemaining <= CONST_SMALL_NUMBER || updatableEntity.deathAge;
                         } else {
                             if( !updatableMonster.deathAge ) {
-                                this.addEntityPosition(updatableMonster);
+                                addEntityPosition(updatableMonster);
                                 // check that we are near the camera
                                 if( updatableMonster.sound ) {
-                                    let dx = this.cameraX - updatableMonster.x;
-                                    let dy = this.cameraY - updatableMonster.y;
-                                    let dz = this.cameraZ - updatableMonster.z;
+                                    let dx = world.cameraX - updatableMonster.x;
+                                    let dy = world.cameraY - updatableMonster.y;
+                                    let dz = world.cameraZ - updatableMonster.z;
                                     let dsq = dx*dx+dy*dy+dz*dz;
                                     if( dsq < CONST_MAX_SOUND_RADIUS_SQUARED * updatableMonster.radius * updatableMonster.radius * CONST_RADIUS_SOUND_VOLUME_RATIO_SQUARED) {
                                         updatableMonster.sound.start(updatableMonster.x, updatableMonster.y, updatableMonster.z);                                        
@@ -486,199 +524,160 @@ class World {
             }
         }
 
-    }
+	}
 
-    public setCameraPosition(x: number, y: number, z: number, rotationX: number, rotationY: number, rotationZ: number) {
+	let world: World = {
+		age: 0,
+		updatableEntities: [], 
+		allEntities: {
+			0: [], 
+			1: [], 
+			2: [], 
+			3: [], 
+			4: [], 
+			5: []
+		},
+		aggro: 0, 
+		previousAggro: 0,
+		getEntitiesAt(chunkX: number, chunkY: number): (Monster | Surface)[] {
+			let result: (Monster | Surface)[];
+			if( rect2Contains(activeTileArea, chunkX, chunkY) ) {
+				let xm = numberPositiveMod(chunkX, CONST_ACTIVE_CHUNKS_WIDTH);
+				let ym = numberPositiveMod(chunkY, CONST_ACTIVE_CHUNKS_HEIGHT);
+				result = activeTiles[xm][ym];
+			}
+			return result;
+		},
+		getNearestEnemy:function(to: Monster, searchRadius?: number): Monster {
+			let targetSide = to.side%2 + 1;
+			return world.getNearest(to.x, to.y, targetSide, searchRadius);
+		},	
+		getNearest: function(x: number, y: number, targetSide: number, searchRadius?: number): Monster {        
+			let targets = world.allEntities[targetSide];
+			if( !searchRadius ) {
+				searchRadius = CONST_ACTIVE_CHUNKS_DIMENSION_MIN * CONST_CHUNK_DIMENSION_MAX;
+			}
+			let result: Monster;
+			let minDistanceSquared = searchRadius * searchRadius;
+			if( targets.length ) {
+				for( let target of targets ) {
+					let targetMonster = target as Monster;
+					let dx = x - targetMonster.x;
+					let dy = y - targetMonster.y;
+					let dsq = dx*dx+dy*dy;
+					if( dsq < minDistanceSquared || !minDistanceSquared ) {
+						result = targetMonster;
+						minDistanceSquared = dsq;
+						if( dsq < 1 ) {
+							// close enough
+							break;
+						}
+					}
+				}    
+			}
+			return result;
+		},
+		addEntity: function(entity: Entity) {
+			// is it actually in our bounds?
+			let overlap: any;
+			if( entity.type == -1 ) {
+				overlap = rect2Contains(activeTileArea, entity.chunkX, entity.chunkY);
+			} else {
+				overlap = addEntityPosition(entity);
+			}
+			if( overlap ) {
+				let entities = world.allEntities[entity.side];
+				if( entities ) {
+					entities.push(entity);
+				} else {
+					world.allEntities[entity.side] = [entity];
+				}
+				if( entity.type ) {
+					world.updatableEntities.push(entity);
+				}
+			}
+		},
+		updateWorld: function(amt: number) {
+			if( CONST_FIXED_STEP ) {
+				let totalAmt = amt + bonusMillis;
+				while( totalAmt >= CONST_FIXED_STEP ) {
+					doUpdate(CONST_FIXED_STEP);
+					totalAmt -= CONST_FIXED_STEP;
+				}
+				bonusMillis = totalAmt;    
+			} else {
+				doUpdate(amt);
+			}
+		}, 
+		setCameraPosition: function(x: number, y: number, z: number, rotationX: number, rotationY: number, rotationZ: number) {
 
-        this.cameraX = x;
-        this.cameraY = y;
-        this.cameraZ = z;
+			world.cameraX = x;
+			world.cameraY = y;
+			world.cameraZ = z;
+	
+			world.cameraRotationX = rotationX;
+			world.cameraRotationY = rotationY;
+			world.cameraRotationZ = rotationZ;
+	
+			let minChunkX = Math.floor(x/CONST_CHUNK_WIDTH - CONST_ACTIVE_CHUNKS_WIDTH / 2);
+			let minChunkY = Math.floor(y/CONST_CHUNK_HEIGHT - CONST_ACTIVE_CHUNKS_HEIGHT / 2);
+			let maxChunkX = Math.floor(x/CONST_CHUNK_WIDTH + CONST_ACTIVE_CHUNKS_WIDTH / 2) - 1;
+			let maxChunkY = Math.floor(y/CONST_CHUNK_HEIGHT + CONST_ACTIVE_CHUNKS_HEIGHT / 2) - 1;
+	
+			if( activeTileArea == null ) {
+				// generate everything
+				activeTileArea = {
+					min: [minChunkX, minChunkY], 
+					max: [maxChunkX, maxChunkY]
+				}
+				// generate the chunks
+				for( let chunkX=minChunkX; chunkX<=maxChunkX; chunkX++) {
+					for( let chunkY=minChunkY; chunkY<=maxChunkY; chunkY++) {
+						let entities = chunkGenerator(chunkX, chunkY);
+						for( let entity of entities ) {
+							world.addEntity(entity);
+						}
+					}
+				}
+			} else if( FLAG_FOLLOW_CAMERA ) {
+				if( minChunkX != activeTileArea.min[0] || minChunkY != activeTileArea.min[1] ) {
+					let previousActiveTileArea = activeTileArea;
+					// TODO work out which bits have fallen off the end and deactivate those entities
+					// also remove any entities which are no longer on the map
+					activeTileArea = {
+						min: [minChunkX, minChunkY], 
+						max: [maxChunkX, maxChunkY]
+					}
+					for( let chunkX=minChunkX; chunkX<=maxChunkX; chunkX++) {
+						for( let chunkY=minChunkY; chunkY<=maxChunkY; chunkY++) {
+							if( rect2Contains(previousActiveTileArea, chunkX, chunkY) ) {
+								// TODO re-add any entities which might share the new area
+	
+							} else {
+								let toRemove = world.getEntitiesAt(chunkX, chunkY);
+								for( let entity of toRemove ) {
+									if( !entity.type ) {
+										let surface = entity as Surface;
+										if( !rect2Contains(activeTileArea, surface.chunkX, surface.chunkY ) ) {
+											removeEntity(surface);
+										}
+									}
+								}
+								toRemove.splice(0, toRemove.length);
+								
+								let entities = chunkGenerator(chunkX, chunkY);
+								for( let entity of entities ) {
+									world.addEntity(entity);
+								}    
+							}                     
+						}
+					}
+				}
+			}
+		} 
+	}
 
-        this.cameraRotationX = rotationX;
-        this.cameraRotationY = rotationY;
-        this.cameraRotationZ = rotationZ;
+	world.setCameraPosition(cameraPosition[0], cameraPosition[1], cameraPosition[2], 0, 0, 0); 
 
-        let minChunkX = Math.floor(x/CONST_CHUNK_WIDTH - CONST_ACTIVE_CHUNKS_WIDTH / 2);
-        let minChunkY = Math.floor(y/CONST_CHUNK_HEIGHT - CONST_ACTIVE_CHUNKS_HEIGHT / 2);
-        let maxChunkX = Math.floor(x/CONST_CHUNK_WIDTH + CONST_ACTIVE_CHUNKS_WIDTH / 2) - 1;
-        let maxChunkY = Math.floor(y/CONST_CHUNK_HEIGHT + CONST_ACTIVE_CHUNKS_HEIGHT / 2) - 1;
-
-        if( this.activeTileArea == null ) {
-            // generate everything
-            this.activeTileArea = {
-                min: [minChunkX, minChunkY], 
-                max: [maxChunkX, maxChunkY]
-            }
-            // generate the chunks
-            for( let chunkX=minChunkX; chunkX<=maxChunkX; chunkX++) {
-                for( let chunkY=minChunkY; chunkY<=maxChunkY; chunkY++) {
-                    let entities = this.chunkGenerator(chunkX, chunkY);
-                    for( let entity of entities ) {
-                        this.addEntity(entity);
-                    }
-                }
-            }
-        } else if( FLAG_FOLLOW_CAMERA ) {
-            if( minChunkX != this.activeTileArea.min[0] || minChunkY != this.activeTileArea.min[1] ) {
-                let previousActiveTileArea = this.activeTileArea;
-                // TODO work out which bits have fallen off the end and deactivate those entities
-                // also remove any entities which are no longer on the map
-                this.activeTileArea = {
-                    min: [minChunkX, minChunkY], 
-                    max: [maxChunkX, maxChunkY]
-                }
-                for( let chunkX=minChunkX; chunkX<=maxChunkX; chunkX++) {
-                    for( let chunkY=minChunkY; chunkY<=maxChunkY; chunkY++) {
-                        if( rect2Contains(previousActiveTileArea, chunkX, chunkY) ) {
-                            // TODO re-add any entities which might share the new area
-
-                        } else {
-                            let toRemove = this.getEntitiesAt(chunkX, chunkY);
-                            for( let entity of toRemove ) {
-                                if( !entity.type ) {
-                                    let surface = entity as Surface;
-                                    if( !rect2Contains(this.activeTileArea, surface.chunkX, surface.chunkY ) ) {
-                                        this.removeEntity(surface);
-                                    }
-                                }
-                            }
-                            toRemove.splice(0, toRemove.length);
-                            
-                            let entities = this.chunkGenerator(chunkX, chunkY);
-                            for( let entity of entities ) {
-                                this.addEntity(entity);
-                            }    
-                        }                     
-                    }
-                }
-            }
-        }
-    }
-
-    public addEntity(entity: Entity) {
-        // is it actually in our bounds?
-        let overlap: any;
-        if( entity.type == -1 ) {
-            overlap = rect2Contains(this.activeTileArea, entity.chunkX, entity.chunkY);
-        } else {
-            overlap = this.addEntityPosition(entity);
-        }
-        if( overlap ) {
-            let entities = this.allEntities[entity.side];
-            if( entities ) {
-                entities.push(entity);
-            } else {
-                this.allEntities[entity.side] = [entity];
-            }
-            if( entity.type ) {
-                this.updatableEntities.push(entity);
-            }
-        }
-    }
-
-    public addEntityPosition(entity: Monster | Surface): Rect2 {
-        return this.iterateTiles(entity.bounds(), function(entities: Entity[]) {
-            entities.push(entity);
-        });
-    }
-
-    
-
-    public removeEntity(entity: Entity) {
-        if( entity.type ) {
-            arrayRemove(this.updatableEntities, entity);
-            if( entity.type == 1 && entity.sound ) {
-                entity.sound.stop();
-            }
-        }
-        let sideEntities = this.allEntities[entity.side];
-        if( sideEntities ) {
-            arrayRemove(sideEntities, entity);
-        }
-        if( entity.type != -1 ) {
-            this.removeEntityPosition(entity);
-        }
-        if( FLAG_CLEAN_UP_ENTITY ) {
-            entity.cleanup();
-        } 
-    }
-
-    public removeEntityPosition(entity: Monster | Surface) {
-        return this.iterateTiles(entity.bounds(), function(entities: Entity[]) {
-            arrayRemove(entities, entity);
-        });
-    }
-
-    private iterateEntities(bounds: Rect2, f: (entity: Monster | Surface) => void ) {
-        let iteratedEntities: {[_:number]: number} = {};
-        this.iterateTiles(bounds, function(entities: (Monster | Surface)[]) {
-            for( let entity of entities ) {
-                if( !iteratedEntities[entity.id] ) {
-                    f.call(this, entity);
-                    iteratedEntities[entity.id] = 1;
-                }
-            }
-        });
-    }
-
-    public getNearestEnemy(to: Monster, searchRadius?: number): Monster {
-        let targetSide = to.side%2 + 1;
-        return this.getNearest(to.x, to.y, targetSide, searchRadius);
-    } 
-
-    public getNearest(x: number, y: number, targetSide: number, searchRadius?: number): Monster {        
-        let targets = this.allEntities[targetSide];
-        if( !searchRadius ) {
-            searchRadius = CONST_ACTIVE_CHUNKS_DIMENSION_MIN * CONST_CHUNK_DIMENSION_MAX;
-        }
-        let result: Monster;
-        let minDistanceSquared = searchRadius * searchRadius;
-        if( targets.length ) {
-            for( let target of targets ) {
-                let targetMonster = target as Monster;
-                let dx = x - targetMonster.x;
-                let dy = y - targetMonster.y;
-                let dsq = dx*dx+dy*dy;
-                if( dsq < minDistanceSquared || !minDistanceSquared ) {
-                    result = targetMonster;
-                    minDistanceSquared = dsq;
-                    if( dsq < 1 ) {
-                        // close enough
-                        break;
-                    }
-                }
-            }    
-        }
-        return result;
-    }
-
-    private iterateTiles(bounds: Rect2, f: (entities: (Monster | Surface)[], tileX?: number, tileY?: number) => void ): Rect2 {
-        let overlap = rect2Overlap(bounds, this.activeTileArea, this.chunkDimensions);
-        if( overlap ) {
-            let minTileX = overlap.min[0];
-            let minTileY = overlap.min[1];
-            let maxTileX = overlap.max[0];
-            let maxTileY = overlap.max[1];
-            
-            for( let x=minTileX; x<=maxTileX; x++ ) {
-                for( let y=minTileY; y<=maxTileY; y++ ) {
-                    
-                    f.call(this, this.getEntitiesAt(x, y), x, y);
-                }
-            }
-        }
-        return overlap;
-    }
-
-    public getEntitiesAt(chunkX: number, chunkY: number): (Monster | Surface)[] {
-        let result: (Monster | Surface)[];
-        if( rect2Contains(this.activeTileArea, chunkX, chunkY) ) {
-            let xm = numberPositiveMod(chunkX, CONST_ACTIVE_CHUNKS_WIDTH);
-            let ym = numberPositiveMod(chunkY, CONST_ACTIVE_CHUNKS_HEIGHT);
-            result = this.activeTiles[xm][ym];
-        }
-        return result;
-    }
-
+	return world;
 }
-
