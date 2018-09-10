@@ -31,7 +31,7 @@ interface World {
 
 function initWorld(
 	chunkGenerator: ChunkGenerator,
-	cameraPosition: Vector3        
+    player: Monster        
 ): World {
 	let activeTiles = array2dCreate(
 		CONST_ACTIVE_CHUNKS_WIDTH, 
@@ -48,10 +48,10 @@ function initWorld(
 	function iterateTiles(bounds: Rect2, f: (entities: (Monster | Surface)[], tileX?: number, tileY?: number) => void ): Rect2 {
         let overlap = rect2Overlap(bounds, activeTileArea, chunkDimensions);
         if( overlap ) {
-            let minTileX = overlap.min[0];
-            let minTileY = overlap.min[1];
-            let maxTileX = overlap.max[0];
-            let maxTileY = overlap.max[1];
+            let minTileX = overlap.minimum[0];
+            let minTileY = overlap.minimum[1];
+            let maxTileX = overlap.maximum[0];
+            let maxTileY = overlap.maximum[1];
             
             for( let x=minTileX; x<=maxTileX; x++ ) {
                 for( let y=minTileY; y<=maxTileY; y++ ) {
@@ -64,23 +64,28 @@ function initWorld(
     }
 
 	function addEntityPosition(entity: Monster | Surface): Rect2 {
-        return iterateTiles(entity.bounds(), function(entities: Entity[]) {
-            entities.push(entity);
+        return iterateTiles(entity.bounds(), function(entities: Entity[], tx: number, ty: number) {
+            if( !entity.entityType && (entity as Surface).chunkX == tx && (entity as Surface).chunkY == ty && (entity as Surface).floor ) {
+                // floor tiles come first so we can get the reference grade
+                entities.unshift(entity);
+            } else{
+                entities.push(entity);
+            }
         });
     }
 
     function removeEntity(entity: Entity) {
-        if( entity.type ) {
+        if( entity.entityType ) {
             arrayRemove(world.updatableEntities, entity);
-            if( entity.type == 1 && entity.sound ) {
-                entity.sound.stop();
+            if( entity.entityType == 1 && entity.sound ) {
+                entity.sound.stopLooping();
             }
         }
         let sideEntities = world.allEntities[entity.side];
         if( sideEntities ) {
             arrayRemove(sideEntities, entity);
         }
-        if( entity.type != -1 ) {
+        if( entity.entityType != -1 ) {
             removeEntityPosition(entity);
         }
         if( FLAG_CLEAN_UP_ENTITY ) {
@@ -98,9 +103,9 @@ function initWorld(
         let iteratedEntities: {[_:number]: number} = {};
         iterateTiles(bounds, function(entities: (Monster | Surface)[]) {
             for( let entity of entities ) {
-                if( !iteratedEntities[entity.id] ) {
+                if( !iteratedEntities[entity.entityId] ) {
                     f.call(world, entity);
-                    iteratedEntities[entity.id] = 1;
+                    iteratedEntities[entity.entityId] = 1;
                 }
             }
         });
@@ -116,14 +121,14 @@ function initWorld(
             let updatableEntity = world.updatableEntities[i];
 
             updatableEntity.age += amt;
-            if( updatableEntity.type == 1 && updatableEntity.deathAge ) {
+            if( updatableEntity.entityType == 1 && updatableEntity.deathAge ) {
                 if( updatableEntity.age > updatableEntity.deathAge + CONST_DEATH_ANIMATION_TIME ) {
                     // remove 
                     removeEntity(updatableEntity);
                 }
             } else if( 
-                updatableEntity.type == 1 && !rect2Overlap(updatableEntity.bounds(), activeTileArea, chunkDimensions) || 
-                updatableEntity.type == -1 && !rect2Contains(activeTileArea, updatableEntity.chunkX, updatableEntity.chunkY)
+                updatableEntity.entityType == 1 && !rect2Overlap(updatableEntity.bounds(), activeTileArea, chunkDimensions) || 
+                updatableEntity.entityType == -1 && !rect2Contains(activeTileArea, updatableEntity.chunkX, updatableEntity.chunkY)
             ) {
                 // it's outside the active area, kill it
                 removeEntity(updatableEntity);
@@ -138,7 +143,7 @@ function initWorld(
                     removeEntity(updatableEntity);
                 }
 
-                if( updatableEntity.type == 1 ) {
+                if( updatableEntity.entityType == 1 ) {
                     updatableEntity.vz -= amt * CONST_GRAVITY_ACCELERATION * updatableEntity.gravityMultiplier;
                     let amtRemaining = amt;
                     let collisionsRemaining = CONST_MAX_COLLISIONS;
@@ -153,6 +158,10 @@ function initWorld(
                         let originalX = updatableEntity.x;
                         let originalY = updatableEntity.y;
                         let originalZ = updatableEntity.z;
+                        let dx = updatableEntity.vx * amtRemaining;
+                        let dy = updatableEntity.vy * amtRemaining;
+                        let dz = updatableEntity.vz * amtRemaining;
+
 
                         removeEntityPosition(updatableEntity); 
 
@@ -173,10 +182,6 @@ function initWorld(
                             }    
                         }
                         
-                        let dx = updatableEntity.vx * amtRemaining;
-                        let dy = updatableEntity.vy * amtRemaining;
-                        let dz = updatableEntity.vz * amtRemaining;
-
 
                         updatableEntity.x += dx;
                         updatableEntity.y += dy;
@@ -190,281 +195,283 @@ function initWorld(
                         let minCollisionPhysics: CollisionPhysics;
         
                         iterateEntities(bounds, function(collisionEntity: Entity) {
-                            let collisionTime: number;
-                            let collisionPhysics: CollisionPhysics;
-                            if( collisionEntity.type ) {
-                                let monster = collisionEntity as Monster;
-                                if( monster.side != updatableEntity.side || FLAG_COLLIDE_WITH_SIDE ) {
-                                    let dx = monster.x - updatableMonster.x;
-                                    let dy = monster.y - updatableMonster.y;
-                                    let dz = monster.z - updatableMonster.z;
-                                    let dsq = dx * dx + dy * dy + dz * dz;
-                                    let r = monster.radius + updatableMonster.radius;
-                                    let velocitySquared = updatableMonster.vx*updatableMonster.vx + updatableMonster.vy*updatableMonster.vy + updatableMonster.vz*updatableMonster.vz;
-                                    if( dsq < r * r && velocitySquared ) {
-                                        // they're overlapping
-                                        if( FLAG_SPHERE_PHYSICS ) {
-                                            let d = Math.sqrt(dsq);
-                                            // note that the time we calculate here probably isn't technically correct because both objects are moving, but it doesn't matter
-                                            let overlap = r - d;
-                                            // how long does it take to move overlap at our velocity?
-                                            let velocity = Math.sqrt(velocitySquared);
-                                            collisionTime = amt - overlap/velocity - CONST_SMALL_NUMBER;
-                                            if( collisionTime >= 0 ) {
-                                                collisionPhysics = function() {
-                                                    // note, updatable monster position will have changed since we calculated it above
-                                                    let d = vector3Normalize([monster.x - updatableMonster.x, monster.y - updatableMonster.y, monster.z - updatableMonster.z]);
-                                                    let dv = vector3Normalize([monster.vx - updatableMonster.vx, monster.vy - updatableMonster.vy, monster.vz - updatableMonster.vz]);
-                                                    if( vector3DotProduct(d, dv) < 0 ) 
-                                                    {
-                                                        // they're moving toward eachother on the plane
-                                                        let to = [0, 0, 1];
-                                                        let axis = vector3Normalize(vector3CrossProduct(to, d));
-                                                        let angle = Math.acos(vector3DotProduct(to, d));
-                                                        let rotationMatrix = matrix4Rotate(axis[0], axis[1], axis[2], angle);
-                                                        //let rotationMatrix = matrix4Multiply(matrix4Rotate(0, axis[1], 0, angle), matrix4Rotate(axis[0], 0, 0, angle));
-                                                        let rotatedMonsterVelocity = vector3TransformMatrix4(monster.vx, monster.vy, monster.vz, rotationMatrix);
-                                                        let rotatedUpdatableMonsterVelocity = vector3TransformMatrix4(updatableMonster.vx, updatableMonster.vy, updatableMonster.vz, rotationMatrix);
-                                                        // let dv = rotatedUpdatableMonsterVelocity[2] + rotatedMonsterVelocity[2];
-                                                        // if( dv < 0 ) 
+                            if( !updatableMonster.deathAge ) {
+                                let collisionTime: number;
+                                let collisionPhysics: CollisionPhysics;
+                                if( collisionEntity.entityType ) {
+                                    let monster = collisionEntity as Monster;
+                                    if( monster.side != updatableEntity.side || FLAG_COLLIDE_WITH_SIDE ) {
+                                        let dx = monster.x - updatableMonster.x;
+                                        let dy = monster.y - updatableMonster.y;
+                                        let dz = monster.z - updatableMonster.z;
+                                        let dsq = dx * dx + dy * dy + dz * dz;
+                                        let r = monster.radius + updatableMonster.radius;
+                                        let velocitySquared = updatableMonster.vx*updatableMonster.vx + updatableMonster.vy*updatableMonster.vy + updatableMonster.vz*updatableMonster.vz;
+                                        if( dsq < r * r && velocitySquared ) {
+                                            // they're overlapping
+                                            if( FLAG_SPHERE_PHYSICS ) {
+                                                let d = Math.sqrt(dsq);
+                                                // note that the time we calculate here probably isn't technically correct because both objects are moving, but it doesn't matter
+                                                let overlap = r - d;
+                                                // how long does it take to move overlap at our velocity?
+                                                let velocity = Math.sqrt(velocitySquared);
+                                                collisionTime = amt - overlap/velocity - CONST_SMALL_NUMBER;
+                                                if( collisionTime >= 0 ) {
+                                                    collisionPhysics = function() {
+                                                        // note, updatable monster position will have changed since we calculated it above
+                                                        let d = vector3Normalize([monster.x - updatableMonster.x, monster.y - updatableMonster.y, monster.z - updatableMonster.z]);
+                                                        let dv = vector3Normalize([monster.vx - updatableMonster.vx, monster.vy - updatableMonster.vy, monster.vz - updatableMonster.vz]);
+                                                        if( vector3DotProduct(d, dv) < 0 ) 
                                                         {
-                                                            //let unrotationMatrix = matrix4Rotate(axis[0], axis[1], axis[2], -angle);
-                                                            let unrotationMatrix = matrix4Invert(rotationMatrix);
-                                                            // they're moving toward eachother
-                                                            let restitution = Math.max(monster.restitution, updatableMonster.restitution);
-                                                            let totalRadius = monster.radius + updatableMonster.radius;
-                                                            let combinedVelocity = (rotatedMonsterVelocity[2] * monster.radius + rotatedUpdatableMonsterVelocity[2] * updatableMonster.radius) / totalRadius;
-                                                            let restitutionVelocity = restitution * combinedVelocity;
-                                                            let resultingVelocity = vector3TransformMatrix4(
-                                                                rotatedMonsterVelocity[0], 
-                                                                rotatedMonsterVelocity[1], 
-                                                                combinedVelocity + restitutionVelocity * updatableMonster.radius/totalRadius, 
-                                                                unrotationMatrix
-                                                            );
-                                                            let resultingUpdatableMonsterVelocity = vector3TransformMatrix4(
-                                                                rotatedUpdatableMonsterVelocity[0], 
-                                                                rotatedUpdatableMonsterVelocity[1], 
-                                                                combinedVelocity - restitutionVelocity * monster.radius/totalRadius, 
-                                                                unrotationMatrix
-                                                            );
-                                                            monster.vx = resultingVelocity[0];
-                                                            monster.vy = resultingVelocity[1];
-                                                            monster.vz = resultingVelocity[2];
-            
-                                                            updatableMonster.vx = resultingUpdatableMonsterVelocity[0];
-                                                            updatableMonster.vy = resultingUpdatableMonsterVelocity[1];
-                                                            updatableMonster.vz = resultingUpdatableMonsterVelocity[2];
+                                                            // they're moving toward eachother on the plane
+                                                            let to = [0, 0, 1];
+                                                            let axis = vector3Normalize(vector3CrossProduct(to, d));
+                                                            let angle = Math.acos(vector3DotProduct(to, d));
+                                                            let rotationMatrix = matrix4Rotate(axis[0], axis[1], axis[2], angle);
+                                                            //let rotationMatrix = matrix4Multiply(matrix4Rotate(0, axis[1], 0, angle), matrix4Rotate(axis[0], 0, 0, angle));
+                                                            let rotatedMonsterVelocity = vector3TransformMatrix4(monster.vx, monster.vy, monster.vz, rotationMatrix);
+                                                            let rotatedUpdatableMonsterVelocity = vector3TransformMatrix4(updatableMonster.vx, updatableMonster.vy, updatableMonster.vz, rotationMatrix);
+                                                            // let dv = rotatedUpdatableMonsterVelocity[2] + rotatedMonsterVelocity[2];
+                                                            // if( dv < 0 ) 
+                                                            {
+                                                                //let unrotationMatrix = matrix4Rotate(axis[0], axis[1], axis[2], -angle);
+                                                                let unrotationMatrix = matrix4Invert(rotationMatrix);
+                                                                // they're moving toward eachother
+                                                                let restitution = Math.max(monster.restitution, updatableMonster.restitution);
+                                                                let totalRadius = monster.radius + updatableMonster.radius;
+                                                                let combinedVelocity = (rotatedMonsterVelocity[2] * monster.radius + rotatedUpdatableMonsterVelocity[2] * updatableMonster.radius) / totalRadius;
+                                                                let restitutionVelocity = restitution * combinedVelocity;
+                                                                let resultingVelocity = vector3TransformMatrix4(
+                                                                    rotatedMonsterVelocity[0], 
+                                                                    rotatedMonsterVelocity[1], 
+                                                                    combinedVelocity + restitutionVelocity * updatableMonster.radius/totalRadius, 
+                                                                    unrotationMatrix
+                                                                );
+                                                                let resultingUpdatableMonsterVelocity = vector3TransformMatrix4(
+                                                                    rotatedUpdatableMonsterVelocity[0], 
+                                                                    rotatedUpdatableMonsterVelocity[1], 
+                                                                    combinedVelocity - restitutionVelocity * monster.radius/totalRadius, 
+                                                                    unrotationMatrix
+                                                                );
+                                                                monster.vx = resultingVelocity[0];
+                                                                monster.vy = resultingVelocity[1];
+                                                                monster.vz = resultingVelocity[2];
+                
+                                                                updatableMonster.vx = resultingUpdatableMonsterVelocity[0];
+                                                                updatableMonster.vy = resultingUpdatableMonsterVelocity[1];
+                                                                updatableMonster.vz = resultingUpdatableMonsterVelocity[2];
+                                                            }
                                                         }
-                                                    }
+        
+                                                    };        
+                                                } else {
+                                                    // if you can't collide with your side, someone is going to die so you don't need physics
+                                                    collisionPhysics = null;
+                                                }
+                                            } else {
+                                                // just report the collision to the entities (may not be accurate, but probably good enough)
+                                                monster.onCollision(world, updatableEntity);
+                                                if( monster.deathAge ) {
+                                                    removeEntityPosition(monster);
+                                                }
+                                                updatableMonster.onCollision(world, monster);
+                                            }
     
-                                                };        
-                                            } else {
-                                                // if you can't collide with your side, someone is going to die so you don't need physics
-                                                collisionPhysics = null;
-                                            }
-                                        } else {
-                                            // just report the collision to the entities (may not be accurate, but probably good enough)
-                                            monster.onCollision(world, updatableEntity);
-                                            if( monster.deathAge ) {
-                                                removeEntityPosition(monster);
-                                            }
-                                            updatableMonster.onCollision(world, monster);
                                         }
-
                                     }
-                                }
-
-                            } else {
-                                let surface = collisionEntity as Surface;
-                                // does it overlap?
-                                if( rect3Overlap(surface.bounds(), bounds) ) {
-                                    // is the sphere overlapping the plane?
-                                    let relativePosition = vector3TransformMatrix4(updatableMonster.x, updatableMonster.y, updatableMonster.z, surface.worldToPoints);
-                                    let intersectionZ = relativePosition[2];
-                                    if( Math.abs(intersectionZ) < updatableMonster.radius ) {
-                                        // velocity z should be negative (moving into the plane), if it's not, we can ignore this result
-                                        let collisionClosestPoint: Vector2;
-                                        let collisionRelativePosition = relativePosition;
-                                        let relativeOrigin = vector3TransformMatrix4(originalX, originalY, originalZ, surface.worldToPoints);
-                                        
-                                        let velocity = vector3TransformMatrix4(updatableMonster.vx, updatableMonster.vy, updatableMonster.vz, surface.worldToPointsRotation);
-                                        let velocityZ = velocity[2];
-
-                                        let overlapTime: number;
-                                        if( velocityZ > 0 ) {
-                                            let overlap = updatableMonster.radius + intersectionZ;
-                                            overlapTime = overlap / velocityZ;
-                                        } else {
-                                            let overlap = updatableMonster.radius - intersectionZ;
-                                            overlapTime = overlap / -velocityZ;
-                                        }
-
-                                        let planeIntersectionTime = amtRemaining - overlapTime;
-                                        //let planeIntersectionTime = amtRemaining * (1 - overlap / (relativeOrigin[2] - relativePosition[2]));
-
-                                        // check if we are starting inside the polygon
-                                        if( FLAG_CHECK_INVALID_START_POSITION ) {
-                                            let closestOriginPoint = vector2PolyEdgeOverlapsCircle(surface.points, relativeOrigin, updatableMonster.radius);
-                                            if( closestOriginPoint ) {
-                                                let odx = closestOriginPoint[0] - relativeOrigin[0];
-                                                let ody = closestOriginPoint[1] - relativeOrigin[1];
-                                                let odz = relativeOrigin[2];
-                                                let odsq = odx*odx+ody*ody+odz*odz
-                                                if( odsq < updatableMonster.radius*updatableMonster.radius || vector2PolyContains(surface.points, relativeOrigin[0], relativeOrigin[1]) && odz < updatableMonster.radius ) {
-													if( FLAG_WARN_INVALID_START_POSITION ) {
-														console.warn(
-															'started colliding with polygon, this will end badly', 
-															{
-																currentPosition: [originalX, originalY, originalZ], 
-																currentVelocity: [updatableMonster.vx, updatableMonster.vy, updatableMonster.vz], 
-																previousPosition: updatableMonster.previousPosition, 
-																previousVelocity: updatableMonster.previousVelocity,
-																entity: updatableEntity 
-															}
-														);	
-													}
-													// kill it
-													if( updatableMonster.side != SIDE_PLAYER ) {
-														updatableMonster.die(world);
-													}
-                                                }    
-                                            }                                        
-                                        }
-
-                                        if( planeIntersectionTime <= amtRemaining ) {
+    
+                                } else {
+                                    let surface = collisionEntity as Surface;
+                                    // does it overlap?
+                                    if( rect3Overlap(surface.bounds(), bounds) ) {
+                                        // is the sphere overlapping the plane?
+                                        let relativePosition = vector3TransformMatrix4(updatableMonster.x, updatableMonster.y, updatableMonster.z, surface.worldToPoints);
+                                        let intersectionZ = relativePosition[2];
+                                        if( Math.abs(intersectionZ) < updatableMonster.radius ) {
+                                            // velocity z should be negative (moving into the plane), if it's not, we can ignore this result
+                                            let collisionClosestPoint: Vector2;
+                                            let collisionRelativePosition = relativePosition;
                                             let relativeOrigin = vector3TransformMatrix4(originalX, originalY, originalZ, surface.worldToPoints);
-                                            let planeIntersection = vector3Mix(relativePosition, relativeOrigin, planeIntersectionTime/amtRemaining);
-
-                                            if( velocityZ < 0 && vector2PolyContains(surface.points, planeIntersection[0], planeIntersection[1]) && planeIntersectionTime > 0 ) {
-                                                collisionTime = planeIntersectionTime - CONST_SMALL_NUMBER;
+                                            
+                                            let velocity = vector3TransformMatrix4(updatableMonster.vx, updatableMonster.vy, updatableMonster.vz, surface.worldToPointsRotation);
+                                            let velocityZ = velocity[2];
+    
+                                            let overlapTime: number;
+                                            if( velocityZ > 0 ) {
+                                                let overlap = updatableMonster.radius + intersectionZ;
+                                                overlapTime = overlap / velocityZ;
                                             } else {
-                                                // are we actually overlapping the polygon
-                                                let intersectionRadius = Math.sqrt(updatableMonster.radius * updatableMonster.radius - intersectionZ * intersectionZ);
-        
-                                                collisionClosestPoint = vector2PolyEdgeOverlapsCircle(surface.points, relativePosition, intersectionRadius);
-
-                                                if( collisionClosestPoint || vector2PolyContains(surface.points, relativePosition[0], relativePosition[1] ) ) {
-                                                    // need to back this out
-        
-                                                    let minTime = Math.max(0, planeIntersectionTime - CONST_SMALL_NUMBER);
-                                                    let maxTime = amtRemaining;
-                                                    for( let i=0; i<MAX_STEPS; i++ ) {
-                                                        let testTime = (minTime + maxTime)/2;
-                                                        let testRelativePosition = vector3TransformMatrix4(
-                                                            originalX + testTime * updatableMonster.vx, 
-                                                            originalY + testTime * updatableMonster.vy, 
-                                                            originalZ + testTime * updatableMonster.vz, 
-                                                            surface.worldToPoints
-                                                        );
-                                                        // we know it intersects with the plane
-                                                        let testIntersectionZ = testRelativePosition[2];
-                                                        let testIntersectionRadius = Math.sqrt(updatableMonster.radius * updatableMonster.radius - testIntersectionZ * testIntersectionZ);
-                                                        if( vector2PolyContains(surface.points, testRelativePosition[0], testRelativePosition[1] ) && velocityZ < 0 ) {
-                                                            maxTime = testTime;
-                                                            // bounce up
-                                                            collisionRelativePosition = testRelativePosition;
-                                                            collisionClosestPoint = null;    
-                                                        } else {
-                                                            let closestPoint = vector2PolyEdgeOverlapsCircle(surface.points, testRelativePosition, testIntersectionRadius);
-                                                            if( closestPoint ) {
-                                                                let dx = closestPoint[0] - testRelativePosition[0];
-                                                                let dy = closestPoint[1] - testRelativePosition[1];
-                                                                let dz = testRelativePosition[2];
-                                                                let rsq = dx*dx + dy*dy + dz*dz;
-                                                                if( rsq < updatableMonster.radius * updatableMonster.radius ) {
-                                                                    collisionRelativePosition = testRelativePosition;
-                                                                    collisionClosestPoint = closestPoint;
-
-                                                                    maxTime = testTime;
+                                                let overlap = updatableMonster.radius - intersectionZ;
+                                                overlapTime = overlap / -velocityZ;
+                                            }
+    
+                                            let planeIntersectionTime = amtRemaining - overlapTime;
+                                            //let planeIntersectionTime = amtRemaining * (1 - overlap / (relativeOrigin[2] - relativePosition[2]));
+    
+                                            // check if we are starting inside the polygon
+                                            if( FLAG_CHECK_INVALID_START_POSITION ) {
+                                                let closestOriginPoint = vector2PolyEdgeOverlapsCircle(surface.points, relativeOrigin, updatableMonster.radius);
+                                                if( closestOriginPoint ) {
+                                                    let odx = closestOriginPoint[0] - relativeOrigin[0];
+                                                    let ody = closestOriginPoint[1] - relativeOrigin[1];
+                                                    let odz = relativeOrigin[2];
+                                                    let odsq = odx*odx+ody*ody+odz*odz
+                                                    if( odsq < updatableMonster.radius*updatableMonster.radius || vector2PolyContains(surface.points, relativeOrigin[0], relativeOrigin[1]) && odz < updatableMonster.radius ) {
+                                                        if( FLAG_WARN_INVALID_START_POSITION ) {
+                                                            console.warn(
+                                                                'started colliding with polygon, this will end badly', 
+                                                                {
+                                                                    currentPosition: [originalX, originalY, originalZ], 
+                                                                    currentVelocity: [updatableMonster.vx, updatableMonster.vy, updatableMonster.vz], 
+                                                                    previousPosition: updatableMonster.previousPosition, 
+                                                                    previousVelocity: updatableMonster.previousVelocity,
+                                                                    entity: updatableEntity 
+                                                                }
+                                                            );	
+                                                        }
+                                                        // kill it
+                                                        if( updatableMonster.side != SIDE_PLAYER ) {
+                                                            updatableMonster.die(world);
+                                                        }
+                                                    }    
+                                                }                                        
+                                            }
+    
+                                            if( planeIntersectionTime <= amtRemaining ) {
+                                                let relativeOrigin = vector3TransformMatrix4(originalX, originalY, originalZ, surface.worldToPoints);
+                                                let planeIntersection = vector3Mix(relativePosition, relativeOrigin, planeIntersectionTime/amtRemaining);
+    
+                                                if( velocityZ < 0 && vector2PolyContains(surface.points, planeIntersection[0], planeIntersection[1]) && planeIntersectionTime > 0 ) {
+                                                    collisionTime = planeIntersectionTime - CONST_SMALL_NUMBER;
+                                                } else {
+                                                    // are we actually overlapping the polygon
+                                                    let intersectionRadius = Math.sqrt(updatableMonster.radius * updatableMonster.radius - intersectionZ * intersectionZ);
+            
+                                                    collisionClosestPoint = vector2PolyEdgeOverlapsCircle(surface.points, relativePosition, intersectionRadius);
+    
+                                                    if( collisionClosestPoint || vector2PolyContains(surface.points, relativePosition[0], relativePosition[1] ) ) {
+                                                        // need to back this out
+            
+                                                        let minTime = Math.max(0, planeIntersectionTime - CONST_SMALL_NUMBER);
+                                                        let maxTime = amtRemaining;
+                                                        for( let i=0; i<MAX_STEPS; i++ ) {
+                                                            let testTime = (minTime + maxTime)/2;
+                                                            let testRelativePosition = vector3TransformMatrix4(
+                                                                originalX + testTime * updatableMonster.vx, 
+                                                                originalY + testTime * updatableMonster.vy, 
+                                                                originalZ + testTime * updatableMonster.vz, 
+                                                                surface.worldToPoints
+                                                            );
+                                                            // we know it intersects with the plane
+                                                            let testIntersectionZ = testRelativePosition[2];
+                                                            let testIntersectionRadius = Math.sqrt(updatableMonster.radius * updatableMonster.radius - testIntersectionZ * testIntersectionZ);
+                                                            if( vector2PolyContains(surface.points, testRelativePosition[0], testRelativePosition[1] ) && velocityZ < 0 ) {
+                                                                maxTime = testTime;
+                                                                // bounce up
+                                                                collisionRelativePosition = testRelativePosition;
+                                                                collisionClosestPoint = null;    
+                                                            } else {
+                                                                let closestPoint = vector2PolyEdgeOverlapsCircle(surface.points, testRelativePosition, testIntersectionRadius);
+                                                                if( closestPoint ) {
+                                                                    let dx = closestPoint[0] - testRelativePosition[0];
+                                                                    let dy = closestPoint[1] - testRelativePosition[1];
+                                                                    let dz = testRelativePosition[2];
+                                                                    let rsq = dx*dx + dy*dy + dz*dz;
+                                                                    if( rsq < updatableMonster.radius * updatableMonster.radius ) {
+                                                                        collisionRelativePosition = testRelativePosition;
+                                                                        collisionClosestPoint = closestPoint;
+    
+                                                                        maxTime = testTime;
+                                                                    } else {
+                                                                        minTime = testTime;
+                                                                    }
+                
                                                                 } else {
                                                                     minTime = testTime;
                                                                 }
-            
-                                                            } else {
-                                                                minTime = testTime;
                                                             }
                                                         }
-													}
+                                                        if( collisionClosestPoint ) {
+                                                            // check velocity at collision point (must actually be travelling toward the edge)
+                                                            let angleZ = Math.atan2(
+                                                                collisionClosestPoint[1] - collisionRelativePosition[1], 
+                                                                collisionClosestPoint[0] - collisionRelativePosition[0]
+                                                            ) - CONST_FAIRLY_ACCURATE_PI_DIV_2;
+                                                            let angleX = Math.acos(collisionRelativePosition[2] / updatableMonster.radius);
+                                                            // console.log('angle z/x', angleZ, angleX);
+                                                            // console.log('collision time', minTime);
+                                                            let toMatrix = matrix4MultiplyStack([matrix4Rotate(1, 0, 0, angleX), matrix4Rotate(0, 0, 1, angleZ), surface.worldToPointsRotation]);
+                                                            let vx = updatableMonster.vx;
+                                                            let vy = updatableMonster.vy;
+                                                            let vz = updatableMonster.vz;
+                                                            let collisionRelativeVelocity = vector3TransformMatrix4(vx, vy, vz, toMatrix);                                            
+                                                            if( collisionRelativeVelocity[2] < 0 ) {
+                                                                collisionTime = minTime;
+                                                            }
+    
+                                                        } else {
+                                                            // all these should be legit
+                                                            collisionTime = minTime;
+                                                        }
+                                                    }
+                                                }
+                                                collisionPhysics = function() {
+                                                    let vx = updatableMonster.vx;
+                                                    let vy = updatableMonster.vy;
+                                                    let vz = updatableMonster.vz;
+                                                    let restitution = updatableMonster.restitution;
+            
+                                                    let toMatrix: Matrix4;
+                                                    let fromMatrix: Matrix4;
                                                     if( collisionClosestPoint ) {
-                                                        // check velocity at collision point (must actually be travelling toward the edge)
+                                                        // bounce off closest point at angle
+                                                        // console.log('closest collision point', collisionClosestPoint);
+                                                        // console.log('collision relative position', collisionRelativePosition);
+                                                        // console.log('dx/dy', collisionClosestPoint[0] - collisionRelativePosition[0], collisionClosestPoint[1] - collisionRelativePosition[1]);
+                                                        
                                                         let angleZ = Math.atan2(
                                                             collisionClosestPoint[1] - collisionRelativePosition[1], 
                                                             collisionClosestPoint[0] - collisionRelativePosition[0]
-                                                        ) - Math.PI/2;
+                                                        ) - CONST_FAIRLY_ACCURATE_PI_DIV_2;
                                                         let angleX = Math.acos(collisionRelativePosition[2] / updatableMonster.radius);
                                                         // console.log('angle z/x', angleZ, angleX);
-                                                        // console.log('collision time', minTime);
-                                                        let toMatrix = matrix4MultiplyStack([matrix4Rotate(1, 0, 0, angleX), matrix4Rotate(0, 0, 1, angleZ), surface.worldToPointsRotation]);
-                                                        let vx = updatableMonster.vx;
-                                                        let vy = updatableMonster.vy;
-                                                        let vz = updatableMonster.vz;
-                                                        let collisionRelativeVelocity = vector3TransformMatrix4(vx, vy, vz, toMatrix);                                            
-                                                        if( collisionRelativeVelocity[2] < 0 ) {
-                                                            collisionTime = minTime;
-                                                        }
-
+                                                        // console.log('collision time', minCollisionTime);
+                                                        toMatrix = matrix4MultiplyStack([matrix4Rotate(1, 0, 0, angleX), matrix4Rotate(0, 0, 1, angleZ), surface.worldToPointsRotation, ]);
+                                                        //fromMatrix = matrix4Invert(toMatrix);
+                                                        fromMatrix = matrix4MultiplyStack([surface.pointsToWorldRotation, matrix4Rotate(0, 0, 1, -angleZ), matrix4Rotate(1, 0, 0, -angleX), ]);
                                                     } else {
-                                                        // all these should be legit
-                                                        collisionTime = minTime;
+                                                        toMatrix = surface.worldToPointsRotation;
+                                                        fromMatrix = surface.pointsToWorldRotation;
                                                     }
+                                                    let velocity = vector3TransformMatrix4(vx, vy, vz, toMatrix);                                            
+                                                    // always bounce back a bit
+                                                    let result = vector3TransformMatrix4(velocity[0], velocity[1], velocity[2] * -restitution, fromMatrix);
+                                                    // if( collisionClosestPoint ) {
+                                                    //     console.log("result", result);
+                                                    // }
+                                                    // if( minCollisionTime <= 0 || minCollisionTime > amtRemaining ) {
+                                                    //     console.log("uh oh!!!", velocity);
+                                                    // }
+                                                    updatableMonster.vx = result[0];
+                                                    updatableMonster.vy = result[1];
+                                                    updatableMonster.vz = result[2];
                                                 }
                                             }
-                                            collisionPhysics = function() {
-                                                let vx = updatableMonster.vx;
-                                                let vy = updatableMonster.vy;
-                                                let vz = updatableMonster.vz;
-                                                let restitution = updatableMonster.restitution;
-        
-                                                let toMatrix: Matrix4;
-                                                let fromMatrix: Matrix4;
-                                                if( collisionClosestPoint ) {
-                                                    // bounce off closest point at angle
-                                                    // console.log('closest collision point', collisionClosestPoint);
-                                                    // console.log('collision relative position', collisionRelativePosition);
-                                                    // console.log('dx/dy', collisionClosestPoint[0] - collisionRelativePosition[0], collisionClosestPoint[1] - collisionRelativePosition[1]);
-                                                    
-                                                    let angleZ = Math.atan2(
-                                                        collisionClosestPoint[1] - collisionRelativePosition[1], 
-                                                        collisionClosestPoint[0] - collisionRelativePosition[0]
-                                                    ) - Math.PI/2;
-                                                    let angleX = Math.acos(collisionRelativePosition[2] / updatableMonster.radius);
-                                                    // console.log('angle z/x', angleZ, angleX);
-                                                    // console.log('collision time', minCollisionTime);
-                                                    toMatrix = matrix4MultiplyStack([matrix4Rotate(1, 0, 0, angleX), matrix4Rotate(0, 0, 1, angleZ), surface.worldToPointsRotation, ]);
-                                                    //fromMatrix = matrix4Invert(toMatrix);
-                                                    fromMatrix = matrix4MultiplyStack([surface.pointsToWorldRotation, matrix4Rotate(0, 0, 1, -angleZ), matrix4Rotate(1, 0, 0, -angleX), ]);
-                                                } else {
-                                                    toMatrix = surface.worldToPointsRotation;
-                                                    fromMatrix = surface.pointsToWorldRotation;
-                                                }
-                                                let velocity = vector3TransformMatrix4(vx, vy, vz, toMatrix);                                            
-                                                // always bounce back a bit
-                                                let result = vector3TransformMatrix4(velocity[0], velocity[1], velocity[2] * -restitution, fromMatrix);
-                                                // if( collisionClosestPoint ) {
-                                                //     console.log("result", result);
-                                                // }
-                                                // if( minCollisionTime <= 0 || minCollisionTime > amtRemaining ) {
-                                                //     console.log("uh oh!!!", velocity);
-                                                // }
-                                                updatableMonster.vx = result[0];
-                                                updatableMonster.vy = result[1];
-                                                updatableMonster.vz = result[2];
-                                            }
-                                        }
-                                    }                                
+                                        }                                
+                                    }
                                 }
+                                if( collisionTime != null && (minCollisionTime == null || minCollisionTime > collisionTime) ) {
+                                    minCollisionEntity = collisionEntity;
+                                    minCollisionTime = collisionTime;
+                                    minCollisionPhysics = collisionPhysics;
+                                }   
                             }
-                            if( collisionTime != null && (minCollisionTime == null || minCollisionTime > collisionTime) ) {
-                                minCollisionEntity = collisionEntity;
-                                minCollisionTime = collisionTime;
-                                minCollisionPhysics = collisionPhysics;
-                            }   
                         });
         
                         if( minCollisionTime != null ) {
                             if( FLAG_DETECT_MULTIPLE_COLLISIONS ) {
-                                let id = (minCollisionEntity as Bounded).id
-                                if( id == previousCollisionEntityId && minCollisionEntity.type == 0 ) {
+                                let id = (minCollisionEntity as Bounded).entityId
+                                if( id == previousCollisionEntityId && minCollisionEntity.entityType == 0 ) {
                                     console.warn('already just collided with this surface', updatableEntity, minCollisionEntity);
                                 }
                                 previousCollisionEntityId = id;
@@ -476,7 +483,7 @@ function initWorld(
                             updatableEntity.z = originalZ + updatableEntity.vz * backTo;     
                             amtRemaining -= backTo;    
 
-                            if( minCollisionEntity.type && FLAG_SPHERE_PHYSICS ) {
+                            if( minCollisionEntity.entityType && FLAG_SPHERE_PHYSICS ) {
                                 let monster = minCollisionEntity as Monster;
                                 updatableEntity.onCollision(world, monster);
                                 monster.onCollision(world, updatableEntity);
@@ -507,9 +514,9 @@ function initWorld(
                                     let dz = world.cameraZ - updatableMonster.z;
                                     let dsq = dx*dx+dy*dy+dz*dz;
                                     if( dsq < CONST_MAX_SOUND_RADIUS_SQUARED * updatableMonster.radius * updatableMonster.radius * CONST_RADIUS_SOUND_VOLUME_RATIO_SQUARED) {
-                                        updatableMonster.sound.start(updatableMonster.x, updatableMonster.y, updatableMonster.z);                                        
+                                        updatableMonster.sound.startOrMove(updatableMonster.x, updatableMonster.y, updatableMonster.z);                                        
                                     } else {
-                                        updatableMonster.sound.stop();
+                                        updatableMonster.sound.stopLooping();
                                     }    
                                 }
                             }                            
@@ -525,13 +532,13 @@ function initWorld(
         }
 
 	}
-
+    
 	let world: World = {
 		age: 0,
-		updatableEntities: [], 
+		updatableEntities: [player], 
 		allEntities: {
 			0: [], 
-			1: [], 
+			1: [player], 
 			2: [], 
 			3: [], 
 			4: [], 
@@ -580,7 +587,7 @@ function initWorld(
 		addEntity: function(entity: Entity) {
 			// is it actually in our bounds?
 			let overlap: any;
-			if( entity.type == -1 ) {
+			if( entity.entityType == -1 ) {
 				overlap = rect2Contains(activeTileArea, entity.chunkX, entity.chunkY);
 			} else {
 				overlap = addEntityPosition(entity);
@@ -592,7 +599,7 @@ function initWorld(
 				} else {
 					world.allEntities[entity.side] = [entity];
 				}
-				if( entity.type ) {
+				if( entity.entityType ) {
 					world.updatableEntities.push(entity);
 				}
 			}
@@ -627,26 +634,26 @@ function initWorld(
 			if( activeTileArea == null ) {
 				// generate everything
 				activeTileArea = {
-					min: [minChunkX, minChunkY], 
-					max: [maxChunkX, maxChunkY]
+					minimum: [minChunkX, minChunkY], 
+					maximum: [maxChunkX, maxChunkY]
 				}
 				// generate the chunks
 				for( let chunkX=minChunkX; chunkX<=maxChunkX; chunkX++) {
 					for( let chunkY=minChunkY; chunkY<=maxChunkY; chunkY++) {
-						let entities = chunkGenerator(chunkX, chunkY);
+						let entities = chunkGenerator(chunkX, chunkY, world);
 						for( let entity of entities ) {
 							world.addEntity(entity);
 						}
 					}
 				}
 			} else if( FLAG_FOLLOW_CAMERA ) {
-				if( minChunkX != activeTileArea.min[0] || minChunkY != activeTileArea.min[1] ) {
+				if( minChunkX != activeTileArea.minimum[0] || minChunkY != activeTileArea.minimum[1] ) {
 					let previousActiveTileArea = activeTileArea;
 					// TODO work out which bits have fallen off the end and deactivate those entities
 					// also remove any entities which are no longer on the map
 					activeTileArea = {
-						min: [minChunkX, minChunkY], 
-						max: [maxChunkX, maxChunkY]
+						minimum: [minChunkX, minChunkY], 
+						maximum: [maxChunkX, maxChunkY]
 					}
 					for( let chunkX=minChunkX; chunkX<=maxChunkX; chunkX++) {
 						for( let chunkY=minChunkY; chunkY<=maxChunkY; chunkY++) {
@@ -656,7 +663,7 @@ function initWorld(
 							} else {
 								let toRemove = world.getEntitiesAt(chunkX, chunkY);
 								for( let entity of toRemove ) {
-									if( !entity.type ) {
+									if( !entity.entityType ) {
 										let surface = entity as Surface;
 										if( !rect2Contains(activeTileArea, surface.chunkX, surface.chunkY ) ) {
 											removeEntity(surface);
@@ -665,7 +672,7 @@ function initWorld(
 								}
 								toRemove.splice(0, toRemove.length);
 								
-								let entities = chunkGenerator(chunkX, chunkY);
+								let entities = chunkGenerator(chunkX, chunkY, world);
 								for( let entity of entities ) {
 									world.addEntity(entity);
 								}    
@@ -677,7 +684,8 @@ function initWorld(
 		} 
 	}
 
-	world.setCameraPosition(cameraPosition[0], cameraPosition[1], cameraPosition[2], 0, 0, 0); 
+    world.setCameraPosition(player.x, player.y, player.z, 0, 0, 0); 
+    addEntityPosition(player);
 
 	return world;
 }

@@ -1,6 +1,6 @@
 type Rect<Dimension> = {
-    min: Dimension;
-    max: Dimension;
+    minimum: Dimension;
+    maximum: Dimension;
 }
 
 type Rect2 = Rect<Vector2>;
@@ -15,7 +15,7 @@ function rect3Overlap(r1: Rect3, r2: Rect3, r1Div?: Vector3): Rect3 {
 }
 
 function rect2Contains(r: Rect2, x: number, y: number): boolean {
-    return r.min[0] <= x && r.min[1] <= y && r.max[0] >= x && r.max[1] >= y;
+    return r.minimum[0] <= x && r.minimum[1] <= y && r.maximum[0] >= x && r.maximum[1] >= y;
 }
 
 function rectOverlap(r1: Rect<number[]>, r2: Rect<number[]>, dimension: number, r1Div: number[]): Rect<number[]> {
@@ -23,10 +23,10 @@ function rectOverlap(r1: Rect<number[]>, r2: Rect<number[]>, dimension: number, 
     let min = [];
     let max = [];
     for( let i=0; i<dimension; i++ ) {
-        let min1 = r1.min[i];
-        let max1 = r1.max[i];
-        let min2 = r2.min[i];
-        let max2 = r2.max[i];
+        let min1 = r1.minimum[i];
+        let max1 = r1.maximum[i];
+        let min2 = r2.minimum[i];
+        let max2 = r2.maximum[i];
         if( r1Div ) {
             min1 = Math.floor(min1/r1Div[i]);
             max1 = Math.floor(max1/r1Div[i]);
@@ -43,8 +43,8 @@ function rectOverlap(r1: Rect<number[]>, r2: Rect<number[]>, dimension: number, 
     }
     if( ok ) {
         return {
-            min: min, 
-            max: max
+            minimum: min, 
+            maximum: max
         }
     } 
     // return undefined;

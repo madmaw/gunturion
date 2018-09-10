@@ -23,7 +23,7 @@ function webAudioVibratoSoundLoop3DFactory(
         //let vibratoType: OscillatorType = 'square';
         
         return {
-            start: function (x: number, y: number, z: number) {
+            startOrMove: function (x: number, y: number, z: number) {
                 if( !oscillator ) {
                     oscillator = audioContext.createOscillator();
                     let frequency = rng(9);
@@ -58,7 +58,7 @@ function webAudioVibratoSoundLoop3DFactory(
                 }
                 panner.setPosition(x, y, z);
             }, 
-            stop: function() {
+            stopLooping: function() {
                 if( oscillator ) {
 					if( !FLAG_MINIMAL_AUDIO_CLEANUP ) {
 						oscillator.disconnect();

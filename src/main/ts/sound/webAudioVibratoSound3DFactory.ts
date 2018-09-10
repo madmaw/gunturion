@@ -66,7 +66,19 @@ function webAudioVibratoSound3DFactory(
         oscillator.start();    
 		oscillator.stop(now + durationSeconds);
 		oscillator.onended = function() {
-			panner.disconnect();
+            panner.disconnect();
+            if( !FLAG_MINIMAL_AUDIO_CLEANUP ) {
+                oscillator.disconnect();
+                gain.disconnect();
+                if( vibrato ) {
+                    vibrato.disconnect();
+                    vibratoGain.disconnect();
+                }
+                if( filter ) {
+                    filter.disconnect();
+                }
+
+            }
 		}
 
     }

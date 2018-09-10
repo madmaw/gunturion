@@ -44,6 +44,11 @@ function webAudioBoomSoundFactory(
 		staticNode.stop(audioContext.currentTime + durationSeconds);
 		staticNode.onended = function() {
 			panner.disconnect;
+			if( !FLAG_MINIMAL_AUDIO_CLEANUP ) {
+				gain.disconnect();
+				staticNode.disconnect();
+				filter.disconnect();
+			}
 		}
     }
 

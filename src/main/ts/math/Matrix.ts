@@ -94,11 +94,22 @@ let matrix4Perspective = function(fovy: number, aspect: number, znear: number, z
         0, 0, D, 0
     ];
     */
-    let f = 1.0 / Math.tan(fovy / 2);
+    let f = 1 / Math.tan(fovy / 2);
     let nf = 1 / (znear - zfar);
     return [
         f/aspect, 0, 0, 0, 
         0, f, 0, 0,
+        0, 0, (zfar + znear) * nf, -1, 
+        0, 0, (2 * zfar * znear) * nf, 0
+    ];
+}
+
+let matrix4PerspectiveFlippedY = function(fovy: number, aspect: number, znear: number, zfar: number): Matrix4 {
+    let f = 1 / Math.tan(fovy / 2);
+    let nf = 1 / (znear - zfar);
+    return [
+        f/aspect, 0, 0, 0, 
+        0, -f, 0, 0,
         0, 0, (zfar + znear) * nf, -1, 
         0, 0, (2 * zfar * znear) * nf, 0
     ];

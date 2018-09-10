@@ -78,30 +78,99 @@ module.exports = function (grunt) {
             js13k: {
                 src: ['dist/out.min.js'],
                 overwrite: true,
-                replacements: [{
+                replacements: [{ // turn functions into => form
                     from: /(=|:|return |\(|,)function\(([^\)]*)\)/g, 
                     to:"$1($2)=>"
-                } /*, {
-                    from: /var [^;=]*;/g, 
-                    to: ""
-                }*/, {
+                }, { // replace all function decls with lets
+                    from: /function ([^\)]+)(\([^\)]*\))/g, 
+                    to: "var $1=$2=>"
+                }, { // shorter version of false (very safe)
                     from: /false/g, 
                     to: "!1"
-                }, {
+                }, { // shorter version of true (very safe)
                     from: /true/g, 
                     to: "!0"
-                }, {
+                }, { // remove all whitespace
                     from: /(\n|\r)/g,
                     to: ""
-                }, {
+                }, { // remove whitespace from GLSL
+                    from: /(\;|\{|\})( *\\n *)/g,
+                    to: "$1"
+                }, { // remove remaining whitespace from GLSL
                     from: /( *\\n *)/g,
                     to: "\\n"
-                }/*, {
-                    // note, this is a symptom that TS is initalizing your local vars (which you don't want)
-                    from: /void 0/g,
-                    to: "0"
+                }, { // declare a replacement for void 0
+                    from: /^var /,
+                    to: "var _,"
+                }, {
+                    from: /,void 0(,|\))/g,
+                    to: "$1"
+                }, {
+                    from: /(void 0|null)/g,
+                    to: "_"
+                }/*, { // deteect all non-duplicated var declarations with two or more characters in them
+                    from: /var ((([a-zA-Z_$][a-zA-Z0-9_$])=(([^,\[\}\(;]+|\[[^\]]*\])|[^\(,;]+\([^\)]*\))+,?)*(;|\}))/g,
+                    to: function(word, index, fullText, regexMatches) {
+                        let parts = regexMatches[0].split(',');
+                        let varCounts = this.varCounts;
+                        if( varCounts == null ) {
+                            varCounts = {}
+                            this.varCounts = varCounts;
+                        }
+                        for( let part of parts ) {
+                            let subparts = part.split('=');
+                            if( subparts.length == 2 ) {
+                                let name = subparts[0];
+                                let varCount = varCounts[name];
+                                if( varCount == null ) {
+                                    varCount = 1;
+                                } else {
+                                    varCount++;
+                                }
+                                varCounts[name] = varCount;
+                            }
+                        }
+                        return word;
+                    }
 				}*/]
             }, 
+            js13k2: { // second pass for the bits that we changed above
+                src: ['dist/out.min.js'],
+                overwrite: true,
+                replacements: [{// fix up all the missing semicolons from the previous
+                    from: /\}(var |[^;= \(,\}]+=)/g, 
+                    to: "};$1"
+
+                }/*, { // remove all non-duplicated var declarations with two or more characters in them
+                    from: /var ((([a-zA-Z_$][a-zA-Z0-9_$])=(([^,\[\}\(;]+|\[[^\]]*\])|[^\(,;]+\([^\)]*\))+,?)*(;|\}))/g,
+                    to: function(word, index, fullText, regexMatches) {
+                        let parts = regexMatches[0].split(',');
+                        let varCounts = this.varCounts;
+                        let duplicated = false;
+                        for( let part of parts ) {
+                            let subparts = part.split('=');
+                            if( subparts.length == 2 ) {
+                                let name = subparts[0];
+                                let varCount = varCounts[name];
+                                if( varCount > 1 ) {
+                                    duplicated = true;
+                                }
+                            }
+                        }
+                        if( !duplicated ) {
+                            // remove the var, assume the previously declared one will be OK
+                            word = regexMatches[0];
+                        }
+                        return word;
+                    }
+				}*//*, { // remove all var declarations with two or more characters in them
+                    from: /var ([a-zA-Z_$][a-zA-Z0-9_$]+=(([^,\[\}\(;]+|\[[^\]]*\])|[^\(,;]+\([^\)]*\))+,?)*(;|\})/g, 
+                    to: "$1"
+                }*//*, { // remove vars from old functions
+                    from: /(\{|;)var ([a-zA-Z_$][a-zA-Z0-9_$]+=\([^\)]*\)=>)/g, 
+                    to: "$1$2"
+                }*/]
+            },
             html: {
                 src: ['dist/index.html'],
                 overwrite: true,
@@ -158,7 +227,7 @@ module.exports = function (grunt) {
     // Default task(s).
     grunt.registerTask('reset', ['clean:all']);
     grunt.registerTask('prod', ['ts:dist']);
-    grunt.registerTask('js13k', ['prod', 'closure-compiler:js13k', 'replace:js13k', 'copy','cssmin','replace:html', 'inline', 'htmlmin']);
+    grunt.registerTask('js13k', ['prod', 'closure-compiler:js13k', 'replace:js13k', 'replace:js13k2', 'copy','cssmin','replace:html', 'inline', 'htmlmin']);
     grunt.registerTask('default', ['prod', 'connect', 'watch']);
 
 };
