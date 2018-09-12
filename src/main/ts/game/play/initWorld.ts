@@ -341,7 +341,7 @@ function initWorld(
         
                                                 if( planeIntersectionTime <= amtRemaining ) {
                                                     let relativeOrigin = vector3TransformMatrix4(originalX, originalY, originalZ, surface.worldToPoints);
-                                                    let planeIntersection = vector3Mix(relativePosition, relativeOrigin, planeIntersectionTime/amtRemaining);
+                                                    let planeIntersection = vectorMix(relativePosition, relativeOrigin, planeIntersectionTime/amtRemaining, 3);
         
                                                     if( velocityZ < 0 && vector2PolyContains(surface.points, planeIntersection[0], planeIntersection[1]) && planeIntersectionTime > 0 ) {
                                                         collisionTime = planeIntersectionTime - CONST_SMALL_NUMBER;

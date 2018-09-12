@@ -37,7 +37,7 @@ interface Bounded {
 }
 
 interface Rendered {
-    filledColor: Vector3;
+    filledColor: Vector4;
     positionBuffer: WebGLBuffer;
     gridCoordinateBuffer: WebGLBuffer;
     indicesBuffer: WebGLBuffer;
@@ -97,7 +97,10 @@ interface Surface extends EntityBase, Bounded, Rendered {
     gridLighting: number[];
     directedLightingRange: Vector4;
     lastDamageAge?: number;
-    floor?: number;
+    logo?: WebGLTexture;
+    logoHeight?: number;
+    building?: Building;
+    floor?: number | boolean;
     onCollision?: (world: World, entity: Entity) => void;
 }
 
@@ -105,8 +108,8 @@ interface Building extends EntityBase, Updatable {
     entityType: -1;
     chunkX: number;
     chunkY: number;
-    power: number;
-    friendliness: number;
+    power?: number;
+    friendliness?: number;
 }
 
 type Entity = Monster | Surface | Building;
@@ -133,12 +136,14 @@ interface SurfaceGenerator {
         chunkX: number, 
         chunkY: number,
         rotateX: number, 
-        rotateY: number, 
+        rotateZ: number, 
         fillColor: Vector3, 
         lineScaleX: number, 
         lineScaleY: number,
         directedLightingRange: Vector4, 
-        onCollision?: (world: World, entity: Entity) => void
+        onCollision?: (world: World, entity: Entity) => void, 
+        logoText?: string, 
+        building?: Building
     ): Surface;
 }
 
@@ -154,13 +159,15 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
         height: number, 
         chunkX: number, 
         chunkY: number,
-        rotateX: number, 
         rotateY: number, 
+        rotateZ: number, 
         fillColor: Vector3, 
         lineScaleX: number, 
         lineScaleY: number,
         directedLightingRange: Vector4, 
-        onCollision: (world: World, entity: Entity) => void
+        onCollision: (world: World, entity: Entity) => void, 
+        logoText: string, 
+        building: Building
     ) {
         let surfaceId = --nextId;
 
@@ -189,16 +196,16 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
         let floorIndicesBuffer = webglCreateElementArrayBuffer(gl, FLOOR_INDICES);
 
         let worldToPointsRotationMatrix = matrix4Multiply(
-            matrix4Rotate(1, 0, 0, rotateX), 
-            matrix4Rotate(0, 1, 0, rotateY)
+            matrix4Rotate(0, 1, 0, rotateY), 
+            matrix4Rotate(0, 0, 1, rotateZ)
         );
         let worldToPointsMatrix = matrix4Multiply(
             worldToPointsRotationMatrix, 
             matrix4Translate(-x, -y, -z),
         );
         let pointsToWorldRotationMatrix = matrix4Multiply(
-            matrix4Rotate(0, 1, 0, -rotateY),
-            matrix4Rotate(1, 0, 0, -rotateX) 
+            matrix4Rotate(0, 0, 1, -rotateZ),
+            matrix4Rotate(0, 1, 0, -rotateY) 
         );
         let pointsToWorldMatrix = matrix4Multiply(
             matrix4Translate(x, y, z), 
@@ -227,10 +234,24 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
             maximum: [
                 max(x + minRotatedDimensions[0], x + maxRotatedDimensions[0]), 
                 max(y + minRotatedDimensions[1], y + maxRotatedDimensions[1]), 
-                max(z + minRotatedDimensions[2], z + maxRotatedDimensions[2])
+                max(z + minRotatedDimensions[2], z + maxRotatedDimensions[2]) 
             ]
         }
         let gridLighting = [0, 0, 0, 0];
+
+        let logoTexture: WebGLTexture;
+        if( logoText ) {
+            let canvas = d.createElement('canvas');
+            let c = canvas.getContext('2d');
+            let canvasWidth = CONST_SIGN_CANVAS_WIDTH;
+            let canvasHeight = CONST_SIGN_CANVAS_WIDTH * width/height;
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            let textWidth = c.measureText(logoText).width;
+            c.fillText(logoText, (99 - textWidth)/2, 10);
+            let logoData = c.getImageData(0, 0, canvasWidth, canvasHeight).data;
+            logoTexture = webglCreateTexture(gl, canvasWidth, canvasHeight, new Uint8Array(logoData));
+        }
 
         let surface: Surface = {
             entityType: 0,
@@ -253,9 +274,14 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
             pointsToWorldRotation: pointsToWorldRotationMatrix,
             directedLightingRange: directedLightingRange,
             side: SIDE_SCENERY,
+            building: building,
+            logo: logoTexture, 
             cleanup: function() {
                 gl.deleteBuffer(gridCoordinateBuffer);
                 gl.deleteBuffer(floorIndicesBuffer);
+                if( logoTexture ) {
+                    gl.deleteTexture(logoTexture);
+                }
             },
             bounds: function(this: Surface): Rect3 {
                 return bounds;
@@ -339,7 +365,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         let high: number;
         let low: number;
         let lowVariance = .1;
-        let fillColor = [];
+        let fillColor = [FLAG_BIGGER_IS_BRIGHTER?radius/(radius+2):0];
         let lineColor = [];
         let i=3;
         if( !colorPattern ) {
@@ -362,9 +388,6 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             // only one
             high = .9;
             low = .4;
-        }
-        if( FLAG_BIGGER_IS_BRIGHTER ) {
-            low *= min(2, radius/CONST_BASE_RADIUS);
         }
         while( i-- ) {
             let colorPatternBit = colorPattern & 1;
@@ -392,7 +415,8 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
 
         // if the first bit is 0, we generate flying monsters, important for when the player is inaccessible
         let gravityMultiplier = min(1, shift(2)/2);
-        let restitution = shift(2)/4;
+        // bouncing monsters are almost as good as jumping ones
+        let restitution = shift(2)/(FLAG_BEHAVIOUR_JUMP?4:3);
 
         // generate
         let positions: number[] = [];
@@ -770,7 +794,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             );     
         }
         // follow sibling
-        if( shift(1) ) {
+        if( FLAG_BEHAVIOUR_FOLLOW && shift(1) ) {
 
         }
 
@@ -791,7 +815,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             });
         }
         // jump
-        if( !shift(2) ) {
+        if( FLAG_BEHAVIOUR_JUMP && !shift(2) ) {
             let impulse = rng() * .01 + .007;
             behaviours.push(function(world: World, diff: number, takenFlags: number) {
                 if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT) ) {
@@ -817,7 +841,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             }    
 
             // die
-            if( shift(4) == 1 ) {
+            if( FLAG_BEHAVIOUR_DIE && shift(4) == 1 ) {
                 // push to front, will always (probably) be a dependant behavior
                 behaviours.unshift(function(world: World) {
                     monster.die(world, monster);
@@ -880,7 +904,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                 
             }
             // do only if the player is below or equal z 
-            if( shift(1) ) {
+            if( FLAG_BEHAVIOUR_CHECK_ELEVATION && shift(1) ) {
                 let oldBehaviour = behaviours.splice(0, 1)[0];
                 let above = shift(1);
                 let radius = rng(9)+3;

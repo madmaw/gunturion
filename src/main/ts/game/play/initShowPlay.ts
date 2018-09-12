@@ -24,11 +24,12 @@ const C_BLUR_ITERATIONS = FLAG_BLOOM?7:0;
 const C_MAX_POWER_SOURCES = 16;
 const C_GRID_LIGHT_MULTIPLIER = '.4';
 const C_LINE_WIDTH = '.2';
+const C_NEON_LIGHTING = '5.';
 
-const L_ADJUSTED_VERTEX_POSITION = FLAG_SHORTEN_GLSL_VARIABLES?'t':'adjustedVertePosition_';
+const L_RELATIVE_AND_ADJUSTED_VERTEX_POSITION = FLAG_SHORTEN_GLSL_VARIABLES?'t':'adjustedVertePosition_';
 const L_VERTEX_NORMAL = FLAG_SHORTEN_GLSL_VARIABLES?'u':'vertexNormal_';
 const L_VERTEX_POSITION = FLAG_SHORTEN_GLSL_VARIABLES?'v':'vertexPosition_';
-const L_RELATIVE_VERTEX_POSITION = FLAG_SHORTEN_GLSL_VARIABLES?'w':'relativeVertexPosition_';
+//const L_RELATIVE_VERTEX_POSITION = FLAG_SHORTEN_GLSL_VARIABLES?'w':'relativeVertexPosition_';
 
 
 let vertexShaderSource = 
@@ -45,26 +46,26 @@ uniform vec4 ${U_DIRECTED_LIGHTING_NORMAL};
 uniform lowp int ${U_GRID_MODE};
 uniform float ${U_CYCLE_RADIANS};
 uniform float ${U_OFFSET_MULTIPLIER};
-varying vec3 ${V_VERTEX_POSITION};
-varying vec3 ${V_RELATIVE_POSITION};
+varying vec4 ${V_VERTEX_POSITION};
+varying vec4 ${V_RELATIVE_POSITION};
 varying vec4 ${V_GRID_COORDINATE};
 varying vec4 ${V_SCREEN_COORDINATE};
 varying vec4 ${V_NORMAL_LIGHTING};
 void main(){
-    vec3 ${L_ADJUSTED_VERTEX_POSITION}=${A_VERTEX_POSITION}.xyz;
+    vec4 ${L_RELATIVE_AND_ADJUSTED_VERTEX_POSITION}=${A_VERTEX_POSITION};
     vec3 ${L_VERTEX_NORMAL}=${U_SURFACE_NORMAL};
     if(${U_GRID_MODE}>0){
-        ${L_ADJUSTED_VERTEX_POSITION}+=${A_VERTEX_OFFSET}.w*${A_VERTEX_POSITION}.xyz*sin(${U_CYCLE_RADIANS}+${A_GRID_COORDINATE}.w)+${U_OFFSET_MULTIPLIER}*${A_VERTEX_OFFSET}.xyz;
+        ${L_RELATIVE_AND_ADJUSTED_VERTEX_POSITION}+=${A_VERTEX_OFFSET}.w*${A_VERTEX_POSITION}*sin(${U_CYCLE_RADIANS}+${A_GRID_COORDINATE}.w)+${U_OFFSET_MULTIPLIER}*${A_VERTEX_OFFSET};
         ${L_VERTEX_NORMAL}=(${U_MODEL_MATRIX}*vec4(${A_VERTEX_POSITION}.xyz/${A_VERTEX_POSITION}.w,1.)-${U_MODEL_MATRIX}*vec4(vec3(0.), 1.)).xyz;
     }
-    vec4 ${L_VERTEX_POSITION}=${U_MODEL_MATRIX}*vec4(${L_ADJUSTED_VERTEX_POSITION},1.);
-    vec4 ${L_RELATIVE_VERTEX_POSITION}=${U_VIEW_MATRIX}*${L_VERTEX_POSITION};
+    vec4 ${L_VERTEX_POSITION}=${U_MODEL_MATRIX}*vec4(${L_RELATIVE_AND_ADJUSTED_VERTEX_POSITION}.xyz,1.);
+    ${L_RELATIVE_AND_ADJUSTED_VERTEX_POSITION}=${U_VIEW_MATRIX}*${L_VERTEX_POSITION};
     ${V_GRID_COORDINATE}=${A_GRID_COORDINATE};
-    ${V_RELATIVE_POSITION}=${L_RELATIVE_VERTEX_POSITION}.xyz;    
+    ${V_RELATIVE_POSITION}=${L_RELATIVE_AND_ADJUSTED_VERTEX_POSITION};    
     ${V_SCREEN_COORDINATE}=${U_PROJECTION_MATRIX}*${U_PREVIOUS_VIEW_MATRIX}*${L_VERTEX_POSITION};
     ${V_NORMAL_LIGHTING}=vec4(mat3(${U_VIEW_MATRIX})*${L_VERTEX_NORMAL}-mat3(${U_VIEW_MATRIX})*vec3(0.),(dot(${L_VERTEX_NORMAL},${U_DIRECTED_LIGHTING_NORMAL}.xyz)+1.)*${U_DIRECTED_LIGHTING_NORMAL}.w);
-    ${V_VERTEX_POSITION}=${L_VERTEX_POSITION}.xyz;
-    gl_Position=${U_PROJECTION_MATRIX}*${L_RELATIVE_VERTEX_POSITION};
+    ${V_VERTEX_POSITION}=${L_VERTEX_POSITION};
+    gl_Position=${U_PROJECTION_MATRIX}*${L_RELATIVE_AND_ADJUSTED_VERTEX_POSITION};
 }`;
 
 const U_FILL_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'t':'uFillColor_';
@@ -77,6 +78,7 @@ const U_PREVIOUS = FLAG_SHORTEN_GLSL_VARIABLES?'A':'uPrevious_';
 const U_PREVIOUS_DIMENSION = FLAG_SHORTEN_GLSL_VARIABLES?'B':'uPreviousDimension_';
 const U_POWER_SOURCES = FLAG_SHORTEN_GLSL_VARIABLES?'C':'uPowerSources_';
 const U_POWER_SOURCE_COUNT = FLAG_SHORTEN_GLSL_VARIABLES?'D':'uPowerSourceCount_';
+const U_GRID_TEXTURE = FLAG_SHORTEN_GLSL_VARIABLES?'_':'uGridTexture_';
 
 const F_GET_SAMPLE_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'E':'getSampleColor_';
 const FP_SCREEN_COORDINATE = FLAG_SHORTEN_GLSL_VARIABLES?'F':'screenCoordinate_';
@@ -85,10 +87,10 @@ const FP_COUNT = FLAG_SHORTEN_GLSL_VARIABLES?'H':'count_';
 const L_PREVIOUS_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'I':'previousColor_';
 const L_MULT = FLAG_SHORTEN_GLSL_VARIABLES?'J':'mult_';
 const L_DISTANCE_SQUARED = FLAG_SHORTEN_GLSL_VARIABLES?'K':'distanceSquared_';
-const L_DISTANCE = FLAG_SHORTEN_GLSL_VARIABLES?'L':'distance_';
+const L_DISTANCE_AND_FI = FLAG_SHORTEN_GLSL_VARIABLES?'L':'distance_';
 const L_FOGGINESS = FLAG_SHORTEN_GLSL_VARIABLES?'M':'fogginess_';
 const L_GRID_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'N':'gridColor_';
-const L_GRID_POWER = FLAG_SHORTEN_GLSL_VARIABLES?'O':'gridPower_';
+const L_GRID_POWER_AND_COUNT_AND_FOCUS = FLAG_SHORTEN_GLSL_VARIABLES?'O':'gridPower_';
 const L_POWER_SOURCE = FLAG_SHORTEN_GLSL_VARIABLES?'P':'powerSource_';
 const L_POWER_SOURCE_DELTA = FLAG_SHORTEN_GLSL_VARIABLES?'Q':'powerSourceDelta_';
 const L_POWER_SOURCE_DISTANCE = FLAG_SHORTEN_GLSL_VARIABLES?'R':'powerSourceDistance_';
@@ -100,38 +102,41 @@ const L_FILL_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'W':'fillColor_';
 const L_LINE_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'X':'lineColor_';
 const L_FWIDTH = FLAG_SHORTEN_GLSL_VARIABLES?'Y':'a3_';
 const L_FLOOR_GRID_COORDINATE = FLAG_SHORTEN_GLSL_VARIABLES?'Z':'floorGridCoordinate_';
-const L_LINE_DELTA_MIN = FLAG_SHORTEN_GLSL_VARIABLES?'a':'mn_';
+const L_LINE_DELTA_MIN_AND_BIT = FLAG_SHORTEN_GLSL_VARIABLES?'a':'mn_';
 const L_LINE_DELTA_MAX = FLAG_SHORTEN_GLSL_VARIABLES?'b':'mx_';
 const L_LINE_WIDTH = FLAG_SHORTEN_GLSL_VARIABLES?'c':'lineWidth_';
-const L_BIT = FLAG_SHORTEN_GLSL_VARIABLES?'d':'bit_';
+//const L_BIT = FLAG_SHORTEN_GLSL_VARIABLES?'d':'bit_';
 const L_CURRENT_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'e':'currentColor_';
 const L_TEXTURE_COORDINATE = FLAG_SHORTEN_GLSL_VARIABLES?'f':'textureCoordinate_';
-const L_COUNT = FLAG_SHORTEN_GLSL_VARIABLES?'g':'count_';
-const L_FOCUS = FLAG_SHORTEN_GLSL_VARIABLES?'h':'focus_';
+//const L_COUNT = FLAG_SHORTEN_GLSL_VARIABLES?'g':'count_';
+//const L_FOCUS = FLAG_SHORTEN_GLSL_VARIABLES?'h':'focus_';
+const L_PIXEL = FLAG_SHORTEN_GLSL_VARIABLES?'f':'pixel_';
+const L_GRADIENT_POSITION = FLAG_SHORTEN_GLSL_VARIABLES?'g':'gradientPosition_';
 
 let fragmentShaderSource = 
 `#extension GL_OES_standard_derivatives:enable
 precision lowp float;
-uniform vec3 ${U_FILL_COLOR};
+uniform vec4 ${U_FILL_COLOR};
 uniform vec3 ${U_LINE_COLOR};
 uniform vec4 ${U_CAMERA_LIGHT};
 uniform float ${U_AMBIENT_LIGHT};
 uniform sampler2D ${U_PREVIOUS};
+uniform sampler2D ${U_GRID_TEXTURE};
 uniform vec2 ${U_PREVIOUS_DIMENSION};
 uniform lowp int ${U_GRID_MODE};
-uniform vec2 ${U_GRID_DIMENSION};
+uniform vec3 ${U_GRID_DIMENSION};
 uniform float ${U_GRID_LIGHTING}[4];
 uniform vec4 ${U_DIRECTED_LIGHTING_RANGE};
 uniform vec4 ${U_POWER_SOURCES}[${C_MAX_POWER_SOURCES}];
 uniform lowp int ${U_POWER_SOURCE_COUNT};
-varying vec3 ${V_VERTEX_POSITION};
-varying vec3 ${V_RELATIVE_POSITION};
+varying vec4 ${V_VERTEX_POSITION};
+varying vec4 ${V_RELATIVE_POSITION};
 varying vec4 ${V_GRID_COORDINATE};
 varying vec4 ${V_SCREEN_COORDINATE};
 varying vec4 ${V_NORMAL_LIGHTING};
 vec4 ${F_GET_SAMPLE_COLOR}(vec2 ${FP_SCREEN_COORDINATE},int ${FP_DIV},inout float ${FP_COUNT}){
     vec4 ${L_PREVIOUS_COLOR}=texture2D(${U_PREVIOUS},${FP_SCREEN_COORDINATE});
-    if(${L_PREVIOUS_COLOR}.a>.1){
+    if(${L_PREVIOUS_COLOR}.w>.1){
         float ${L_MULT}=${C_BLUR_ITERATIONS}./float(${C_BLUR_ITERATIONS}-${FP_DIV}); 
         ${FP_COUNT}+=${L_MULT};
         return ${L_PREVIOUS_COLOR}*${L_MULT};
@@ -140,14 +145,13 @@ vec4 ${F_GET_SAMPLE_COLOR}(vec2 ${FP_SCREEN_COORDINATE},int ${FP_DIV},inout floa
     }
 }
 void main(){
-    float ${L_DISTANCE_SQUARED}=${V_RELATIVE_POSITION}.x*${V_RELATIVE_POSITION}.x+${V_RELATIVE_POSITION}.y*${V_RELATIVE_POSITION}.y+${V_RELATIVE_POSITION}.z*${V_RELATIVE_POSITION}.z;
-    float ${L_DISTANCE}=sqrt(${L_DISTANCE_SQUARED});
+    float ${L_DISTANCE_AND_FI}=length(${V_RELATIVE_POSITION}.xyz);
     float ${L_FOGGINESS}=0.;
-    if(${L_DISTANCE}<${CONST_VISIBLE_DISTANCE}.){
-        ${L_FOGGINESS}=clamp((${CONST_VISIBLE_DISTANCE_SQUARED}.-${L_DISTANCE_SQUARED})/${CONST_VISIBLE_DISTANCE_SQUARED}.,0.,1.);
+    if(${L_DISTANCE_AND_FI}<${CONST_VISIBLE_DISTANCE}.){
+        ${L_FOGGINESS}=clamp((${CONST_VISIBLE_DISTANCE_SQUARED}.-${L_DISTANCE_AND_FI}*${L_DISTANCE_AND_FI})/${CONST_VISIBLE_DISTANCE_SQUARED}.,0.,1.);
     }
     vec3 ${L_GRID_COLOR}=vec3(0.);
-    float ${L_GRID_POWER}=0.;
+    float ${L_GRID_POWER_AND_COUNT_AND_FOCUS}=0.;
     for(int i=0;i<${C_MAX_POWER_SOURCES};i++){
         if(i<${U_POWER_SOURCE_COUNT}){
             vec4 ${L_POWER_SOURCE}=${U_POWER_SOURCES}[i];
@@ -156,58 +160,65 @@ void main(){
             if(${L_POWER_SOURCE_DISTANCE}<${L_POWER_SOURCE}.z){
                 float ${L_POWER}=(${L_POWER_SOURCE}.z-${L_POWER_SOURCE_DISTANCE})/${L_POWER_SOURCE}.z;
                 float ${L_POWER_SQUARED}=${L_POWER}*${L_POWER}*${L_POWER_SOURCE}.z/${CONST_BASE_BUILDING_POWER}.;
-                ${L_GRID_POWER}+=${L_POWER_SQUARED};
+                ${L_GRID_POWER_AND_COUNT_AND_FOCUS}+=${L_POWER_SQUARED};
                 ${L_GRID_COLOR}+=vec3(.5,${L_POWER_SOURCE}.w,.5-${L_POWER_SOURCE}.w)*${L_POWER_SQUARED};
             }
         }
     }
-    if(${L_GRID_POWER}>0.){
-        ${L_GRID_COLOR}/=${L_GRID_POWER};
+    if(${L_GRID_POWER_AND_COUNT_AND_FOCUS}>0.){
+        ${L_GRID_COLOR}/=${L_GRID_POWER_AND_COUNT_AND_FOCUS};
     }
-    float ${L_LIGHTING}=clamp(1.-${L_DISTANCE}/${U_CAMERA_LIGHT}.x,0.,1.)*-dot(${V_RELATIVE_POSITION}/${L_DISTANCE},${V_NORMAL_LIGHTING}.xyz)*${U_CAMERA_LIGHT}.y+${U_AMBIENT_LIGHT}+${V_NORMAL_LIGHTING}.w;
+    float ${L_LIGHTING}=clamp(1.-${L_DISTANCE_AND_FI}/${U_CAMERA_LIGHT}.x,0.,1.)*-dot(${V_RELATIVE_POSITION}.xyz/${L_DISTANCE_AND_FI},${V_NORMAL_LIGHTING}.xyz)*${U_CAMERA_LIGHT}.y+${U_AMBIENT_LIGHT}+${V_NORMAL_LIGHTING}.w;
     float ${L_TILENESS}=1.;
     vec3 ${L_FILL_COLOR};
     vec3 ${L_LINE_COLOR};
     if(${U_GRID_MODE}>0){
-        vec3 ${L_FWIDTH}=smoothstep(vec3(0.0),fwidth(${V_GRID_COORDINATE}.xyz)*max(1.,${C_LINE_WIDTH}*(1.-${L_DISTANCE}/${CONST_VISIBLE_DISTANCE}.)),${V_GRID_COORDINATE}.xyz);
+        vec3 ${L_FWIDTH}=smoothstep(vec3(0.0),fwidth(${V_GRID_COORDINATE}.xyz)*max(1.,${C_LINE_WIDTH}*(1.-${L_DISTANCE_AND_FI}/${CONST_VISIBLE_DISTANCE}.)),${V_GRID_COORDINATE}.xyz);
         ${L_TILENESS}=min(min(${L_FWIDTH}.x,${L_FWIDTH}.y),${L_FWIDTH}.z);
-        ${L_FILL_COLOR}=${U_FILL_COLOR};
+        ${L_FILL_COLOR}=${U_FILL_COLOR}.xyz;
         ${L_LINE_COLOR}=${U_LINE_COLOR};
+        ${L_LIGHTING}+=${U_FILL_COLOR}.w;
     }else{ 
         vec4 ${L_FLOOR_GRID_COORDINATE}=floor(${V_GRID_COORDINATE});
-        float ${L_LINE_DELTA_MIN}=min(${V_GRID_COORDINATE}.x-${L_FLOOR_GRID_COORDINATE}.x,(${V_GRID_COORDINATE}.y-${L_FLOOR_GRID_COORDINATE}.y)*${V_GRID_COORDINATE}.z);
+        float ${L_LINE_DELTA_MIN_AND_BIT}=min(${V_GRID_COORDINATE}.x-${L_FLOOR_GRID_COORDINATE}.x,(${V_GRID_COORDINATE}.y-${L_FLOOR_GRID_COORDINATE}.y)*${V_GRID_COORDINATE}.z);
         float ${L_LINE_DELTA_MAX}=max(${V_GRID_COORDINATE}.x-${L_FLOOR_GRID_COORDINATE}.x,1.-(1.-${V_GRID_COORDINATE}.y+${L_FLOOR_GRID_COORDINATE}.y)*${V_GRID_COORDINATE}.z);
-        float ${L_LINE_WIDTH}=(1.+${L_GRID_POWER}*${L_GRID_POWER})*${V_GRID_COORDINATE}.w; 
-        if(${L_LINE_DELTA_MIN}<${L_LINE_WIDTH}||${L_LINE_DELTA_MAX}>(1.-${L_LINE_WIDTH})){
-            ${L_TILENESS}=min(${L_LINE_DELTA_MIN},1.-${L_LINE_DELTA_MAX})/${L_LINE_WIDTH}*(1.-max(0.,${L_DISTANCE}/${CONST_VISIBLE_DISTANCE}.))*(1.-${L_LINE_WIDTH})+${L_LINE_WIDTH};
+        float ${L_LINE_WIDTH}=(1.+${L_GRID_POWER_AND_COUNT_AND_FOCUS}*${L_GRID_POWER_AND_COUNT_AND_FOCUS})*${V_GRID_COORDINATE}.w; 
+        if(${L_LINE_DELTA_MIN_AND_BIT}<${L_LINE_WIDTH}||${L_LINE_DELTA_MAX}>(1.-${L_LINE_WIDTH})){
+            ${L_TILENESS}=min(${L_LINE_DELTA_MIN_AND_BIT},1.-${L_LINE_DELTA_MAX})/${L_LINE_WIDTH}*(1.-max(0.,${L_DISTANCE_AND_FI}/${CONST_VISIBLE_DISTANCE}.))*(1.-${L_LINE_WIDTH})+${L_LINE_WIDTH};
             ${L_TILENESS}*=${L_TILENESS}*${L_TILENESS};
         }
-        float ${L_BIT} = ${L_FLOOR_GRID_COORDINATE}.y*${U_GRID_DIMENSION}.x+${L_FLOOR_GRID_COORDINATE}.x;
+        ${L_LINE_DELTA_MIN_AND_BIT} = ${L_FLOOR_GRID_COORDINATE}.y*${U_GRID_DIMENSION}.x+${L_FLOOR_GRID_COORDINATE}.x;
         for(int i=0;i<4;i++){
-            if(${L_BIT}<${CONST_GL_SAFE_BITS}.&&${L_BIT}>=0.) {
-                ${L_LIGHTING}=max(${L_LIGHTING},mod(floor(${U_GRID_LIGHTING}[i]/pow(2.,${L_BIT})), 2.)*5.);
+            if(${L_LINE_DELTA_MIN_AND_BIT}<${CONST_GL_SAFE_BITS}.&&${L_LINE_DELTA_MIN_AND_BIT}>=0.) {
+                ${L_LIGHTING}=max(${L_LIGHTING},mod(floor(${U_GRID_LIGHTING}[i]/pow(2.,${L_LINE_DELTA_MIN_AND_BIT})), 2.)*${C_NEON_LIGHTING});
             }
-            ${L_BIT}-=${CONST_GL_SAFE_BITS}.;
+            ${L_LINE_DELTA_MIN_AND_BIT}-=${CONST_GL_SAFE_BITS}.;
         }
-        ${L_GRID_COLOR}=mix(${U_LINE_COLOR},${L_GRID_COLOR},sqrt(${L_GRID_POWER}));
+        ${L_GRID_COLOR}=mix(${U_LINE_COLOR},${L_GRID_COLOR},sqrt(${L_GRID_POWER_AND_COUNT_AND_FOCUS}));
         ${L_LINE_COLOR}=${L_GRID_COLOR};
-        ${L_FILL_COLOR}=${U_FILL_COLOR};
+        vec2 ${L_GRADIENT_POSITION}=${V_GRID_COORDINATE}.xy/${U_GRID_DIMENSION}.xy-.5;
+        ${L_FILL_COLOR}=vec3(${U_FILL_COLOR}.xy, ${U_FILL_COLOR}.z+${U_FILL_COLOR}.w*(${L_GRADIENT_POSITION}.x+${L_GRADIENT_POSITION}.y));
+        if(${U_GRID_DIMENSION}.z>0.){
+            vec4 ${L_PIXEL}=texture2D(${U_GRID_TEXTURE},1.-${V_GRID_COORDINATE}.yx/${U_GRID_DIMENSION}.yx);
+            ${L_LIGHTING}+=${L_PIXEL}.w*${C_NEON_LIGHTING}*${U_GRID_DIMENSION}.z;
+            ${L_TILENESS}=max(${L_TILENESS},${L_PIXEL}.w*${U_GRID_DIMENSION}.z);
+        }
     }
     vec4 ${L_CURRENT_COLOR}=vec4(mix(${L_LINE_COLOR},max(mix(vec3(0.),${L_FILL_COLOR},${L_LIGHTING}),${L_GRID_COLOR}*${C_GRID_LIGHT_MULTIPLIER}*(1.-min((${V_VERTEX_POSITION}.z-(${V_VERTEX_POSITION}.x-${U_DIRECTED_LIGHTING_RANGE}.x)*${U_DIRECTED_LIGHTING_RANGE}.y-${U_DIRECTED_LIGHTING_RANGE}.z)/${U_DIRECTED_LIGHTING_RANGE}.w,1.))),${L_TILENESS}), ${L_FOGGINESS});
     vec2 ${L_TEXTURE_COORDINATE}=(${V_SCREEN_COORDINATE}.xy/${V_SCREEN_COORDINATE}.w)/2.+.5;
-    float ${L_COUNT}=0.;
-    vec4 ${L_PREVIOUS_COLOR}=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE},0,${L_COUNT});
+    ${L_GRID_POWER_AND_COUNT_AND_FOCUS}=0.;
+    vec4 ${L_PREVIOUS_COLOR}=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE},0,${L_GRID_POWER_AND_COUNT_AND_FOCUS});
     for(int i=1;i<${C_BLUR_ITERATIONS};++i){
-        float fi=float(i);
-        ${L_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}+vec2(${U_PREVIOUS_DIMENSION}.x,0.)*fi,i,${L_COUNT});
-        ${L_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}-vec2(${U_PREVIOUS_DIMENSION}.x,0.)*fi,i,${L_COUNT});
-        ${L_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}+vec2(0.,${U_PREVIOUS_DIMENSION}.y)*fi,i,${L_COUNT});
-        ${L_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}-vec2(0.,${U_PREVIOUS_DIMENSION}.y)*fi,i,${L_COUNT});
+        ${L_DISTANCE_AND_FI}=float(i);
+        ${L_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}+vec2(${U_PREVIOUS_DIMENSION}.x,0.)*${L_DISTANCE_AND_FI},i,${L_GRID_POWER_AND_COUNT_AND_FOCUS});
+        ${L_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}-vec2(${U_PREVIOUS_DIMENSION}.x,0.)*${L_DISTANCE_AND_FI},i,${L_GRID_POWER_AND_COUNT_AND_FOCUS});
+        ${L_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}+vec2(0.,${U_PREVIOUS_DIMENSION}.y)*${L_DISTANCE_AND_FI},i,${L_GRID_POWER_AND_COUNT_AND_FOCUS});
+        ${L_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}-vec2(0.,${U_PREVIOUS_DIMENSION}.y)*${L_DISTANCE_AND_FI},i,${L_GRID_POWER_AND_COUNT_AND_FOCUS});
     }
-    if(${L_COUNT}>0.){
-        ${L_PREVIOUS_COLOR}/=${L_COUNT};
-        float ${L_FOCUS}=sqrt(${L_PREVIOUS_COLOR}.a)*${U_CAMERA_LIGHT}.z;
-        ${L_CURRENT_COLOR}=vec4((${L_CURRENT_COLOR}.rgb*${L_FOCUS}+${L_PREVIOUS_COLOR}.rgb*(1.-${L_FOCUS}))*${U_CAMERA_LIGHT}.w,${L_CURRENT_COLOR}.a);
+    if(${L_GRID_POWER_AND_COUNT_AND_FOCUS}>0.){
+        ${L_PREVIOUS_COLOR}/=${L_GRID_POWER_AND_COUNT_AND_FOCUS};
+        ${L_GRID_POWER_AND_COUNT_AND_FOCUS}=sqrt(${L_PREVIOUS_COLOR}.w)*${U_CAMERA_LIGHT}.z;
+        ${L_CURRENT_COLOR}=vec4((${L_CURRENT_COLOR}.xyz*${L_GRID_POWER_AND_COUNT_AND_FOCUS}+${L_PREVIOUS_COLOR}.xyz*(1.-${L_GRID_POWER_AND_COUNT_AND_FOCUS}))*${U_CAMERA_LIGHT}.w,${L_CURRENT_COLOR}.a);
     }
     gl_FragColor=${L_CURRENT_COLOR};
 }`;
@@ -231,6 +242,7 @@ function initShowPlay(
         inputCanvas = canvas;
     } else {
         inputCanvas = offscreenCanvas;
+        canvas.parentElement.insertBefore(offscreenCanvas, canvas);
     }
     const CONST_GL_RENDERBUFFER = FLAG_USE_GL_CONSTANTS?gl.RENDERBUFFER:0x8D41;
     const CONST_GL_FRAMEBUFFER = FLAG_USE_GL_CONSTANTS?gl.FRAMEBUFFER:0x8D40;
@@ -255,7 +267,8 @@ function initShowPlay(
     const CONST_GL_UNSIGNED_SHORT = FLAG_USE_GL_CONSTANTS?gl.UNSIGNED_SHORT:0x1403;
     const CONST_GL_RGBA = FLAG_USE_GL_CONSTANTS?gl.RGBA:0x1908;
     const CONST_GL_TRIANGLES = FLAG_USE_GL_CONSTANTS?gl.TRIANGLES:0x0004;
-
+    const CONST_GL_TEXTURE0 = FLAG_USE_GL_CONSTANTS?gl.TEXTURE0:0x84C0; 
+    const CONST_GL_TEXTURE1 = FLAG_USE_GL_CONSTANTS?gl.TEXTURE1:0x84C1;
 
     
 
@@ -357,7 +370,7 @@ function initShowPlay(
     let uPowerSourceCount = gl.getUniformLocation(shaderProgram, U_POWER_SOURCE_COUNT);
     */
 
-    let uniformsAndAttributes: {[_:string]: WebGLUniformLocation | number} = {};
+    let uniformLocations: {[_:string]: WebGLUniformLocation | number} = {};
     if( FLAG_SHORTEN_GLSL_VARIABLES ) {
         let uniformString =         
             U_PROJECTION_MATRIX+
@@ -379,11 +392,12 @@ function initShowPlay(
             U_DIRECTED_LIGHTING_RANGE+
             U_SURFACE_NORMAL+
             U_POWER_SOURCES+
-            U_POWER_SOURCE_COUNT;
-        let uniformCount = 20;
+            U_POWER_SOURCE_COUNT+
+            U_GRID_TEXTURE;
+        let uniformCount = 21;
         while( uniformCount-- ) {
             let c = uniformString[uniformCount];
-            uniformsAndAttributes[c] = gl.getUniformLocation(shaderProgram, c);        
+            uniformLocations[c] = gl.getUniformLocation(shaderProgram, c);        
         }
     } else {
         let attributeNames = [
@@ -408,9 +422,10 @@ function initShowPlay(
             U_DIRECTED_LIGHTING_RANGE,
             U_SURFACE_NORMAL,
             U_POWER_SOURCES,
-            U_POWER_SOURCE_COUNT            
+            U_POWER_SOURCE_COUNT, 
+            U_GRID_TEXTURE
         ];
-        uniformsAndAttributes = webglGetUniformAndAttributeLocations(gl, shaderProgram, uniformNames, attributeNames);
+        uniformLocations = webglGetUniformAndAttributeLocations(gl, shaderProgram, uniformNames, attributeNames);
     }
 
     // webglGetUniformLocations(gl, shaderProgram, [
@@ -539,9 +554,6 @@ function initShowPlay(
 			cancelAnimationFrame(animationFrameHandle);
 			if( !FLAG_NO_LOADING ) {
 				canvas.className = '';
-				if( !FLAG_BLOOM ) {
-					offscreenCanvas.className = 'v';
-				}	
 			}
             if( FLAG_CLEANUP_EVENT_HANDLERS_ON_DESTROY ) {
                 onresize = null;
@@ -560,9 +572,6 @@ function initShowPlay(
         }
 		if( !FLAG_NO_LOADING ) {
 			canvas.className = 'v';
-			if( !FLAG_BLOOM ) {
-				offscreenCanvas.className = 'v';
-			}	
 		}
     
         resize(1); 
@@ -590,7 +599,7 @@ function initShowPlay(
             displayMessageTime = world.age;
         }
         let monsterGenerator = monsterGeneratorFactory(gl, rngFactory, audioContext);
-        let chunkGenerator = flatChunkGeneratorFactory(seed, surfaceGenerator, monsterGenerator, rngFactory, audioContext, say);
+        let chunkGenerator = flatChunkGeneratorFactory(seed, surfaceGenerator, monsterGenerator, rngFactory, audioContext, say, [d, canvas]);
         
         // let player = monsterGenerator(25, -0.000007635353276777558, -4.675305475382446e-22, 0.4900000000000674, CONST_BASE_RADIUS);
         // player.vx = -0.00019996952947114684;
@@ -705,12 +714,12 @@ function initShowPlay(
                             power += p*p*building.power/CONST_BASE_BUILDING_POWER;
                         }
                     }
-                    battery = min(maxBattery, battery + sqrt(power)/amt);
                 }
-                lastPower = power;
+                lastPower = sqrt(power);
+                battery = min(maxBattery, battery + lastPower*amt/(battery*99/maxBattery+49));
                 if( shooting && battery >= CONST_BASE_BULLET_COST ) {
                     let shotInterval = CONST_BASE_BULLET_INTERVAL;
-                    if( player.age > lastShot + shotInterval ) {
+                    if( player.age > lastShot + shotInterval || battery >= maxBattery ) {
                         battery -= CONST_BASE_BULLET_COST;
                         let sinX = sin(player.rx);
                         let cosX = cos(player.rx);
@@ -939,21 +948,32 @@ function initShowPlay(
                 );
             }
 
-            gl.uniform4fv(uniformsAndAttributes[U_POWER_SOURCES], powerSources);
-            gl.uniform1i(uniformsAndAttributes[U_POWER_SOURCE_COUNT], powerSourceCount);
+            gl.uniform4fv(uniformLocations[U_POWER_SOURCES], powerSources);
+            gl.uniform1i(uniformLocations[U_POWER_SOURCE_COUNT], powerSourceCount);
 
-            gl.bindTexture(CONST_GL_TEXTURE_2D, sourceTexture);
-            gl.uniform1i(uniformsAndAttributes[U_PREVIOUS], 0);
-            gl.uniform2f(uniformsAndAttributes[U_PREVIOUS_DIMENSION], 1/canvasWidth, 1/canvasHeight);
-            gl.uniformMatrix4fv(uniformsAndAttributes[U_PROJECTION_MATRIX], false, projectionMatrix);
-            gl.uniformMatrix4fv(uniformsAndAttributes[U_VIEW_MATRIX], false, viewMatrix);
-            gl.uniformMatrix4fv(uniformsAndAttributes[U_PREVIOUS_VIEW_MATRIX], false, previousViewMatrix);
+            if( FLAG_BLOOM ) {
+                gl.uniform1i(uniformLocations[U_PREVIOUS], 0);
+                gl.uniform1i(uniformLocations[U_GRID_TEXTURE], 1);
+                // don't need to set this, it's always reset for us
+                //gl.activeTexture(CONST_GL_TEXTURE0);
+                gl.bindTexture(CONST_GL_TEXTURE_2D, sourceTexture);
+                // all subsequent textures will be on texture 1
+                gl.activeTexture(CONST_GL_TEXTURE1);
+
+            } else {
+                gl.uniform1i(uniformLocations[U_GRID_TEXTURE], 0);                
+            }
+
+            gl.uniform2f(uniformLocations[U_PREVIOUS_DIMENSION], 1/canvasWidth, 1/canvasHeight);
+            gl.uniformMatrix4fv(uniformLocations[U_PROJECTION_MATRIX], false, projectionMatrix);
+            gl.uniformMatrix4fv(uniformLocations[U_VIEW_MATRIX], false, viewMatrix);
+            gl.uniformMatrix4fv(uniformLocations[U_PREVIOUS_VIEW_MATRIX], false, previousViewMatrix);
 
             // work out lighting
             let lightingAngle = min(CONST_DIRTY_PI/2, world.cameraX/CONST_FINISH_X_DIV_PI_ON_2);
             lightingSin = sin(lightingAngle);
             lightingCos = cos(lightingAngle);
-            gl.uniform4f(uniformsAndAttributes[U_DIRECTED_LIGHTING_NORMAL], lightingCos, 0, lightingSin, (lightingSin + 1) * CONST_DIRECTIONAL_LIGHT_INTENSITY_DIV_2);
+            gl.uniform4f(uniformLocations[U_DIRECTED_LIGHTING_NORMAL], lightingCos, 0, lightingSin, (lightingSin + 1) * CONST_DIRECTIONAL_LIGHT_INTENSITY_DIV_2);
 
 
             let cameraLightDistance = CONST_CAMERA_LIGHT_DISTANCE;
@@ -977,7 +997,7 @@ function initShowPlay(
                     (1 - (world.age - player.lastDamageAge - CONST_WINCE_DURATION)) * CONST_WINCE_INTENSITY / CONST_WINCE_DURATION
                 );     
             }
-            gl.uniform4f(uniformsAndAttributes[U_CAMERA_LIGHT], cameraLightDistance, cameraLightIntensity, CONST_FOCUS - wince, CONST_BLOOM + wince);    
+            gl.uniform4f(uniformLocations[U_CAMERA_LIGHT], cameraLightDistance, cameraLightIntensity, CONST_FOCUS - wince, CONST_BLOOM + wince);    
     
             // draw all the entities
             for( let side in world.allEntities ) {
@@ -1002,7 +1022,7 @@ function initShowPlay(
                         }
     
 
-                        gl.uniform1i(uniformsAndAttributes[U_GRID_MODE], entity.entityType);
+                        gl.uniform1i(uniformLocations[U_GRID_MODE], entity.entityType);
 
                         let offsetBuffer: WebGLBuffer;
                         let lineColor: Vector3;
@@ -1044,13 +1064,13 @@ function initShowPlay(
                                 // explode away from the camera
                                 //matrixStack.splice(1, 0, matrix4Scale(1 - b * sinZ, 1 - b * cosZ, 1 - b));
                                 matrixStack.splice(1, 0, matrix4Scale(scale, scale, scale));
-                                lineColor = vector3Mix(CONST_FOG_COLOR_VECTOR, lineColor, bsq);
-                                fillColor = vector3Mix(CONST_FOG_COLOR_VECTOR, fillColor, bsq);
+                                lineColor = vectorMix(CONST_FOG_COLOR_VECTOR, lineColor, bsq, 3);
+                                fillColor = vectorMix(CONST_FOG_COLOR_VECTOR, fillColor, bsq, 4);
                                 // do one last animation
                                 cycle = monster.deathAge / monster.cycleLength + (monster.age - monster.deathAge)/CONST_DEATH_ANIMATION_TIME;
                             }
-                            gl.uniform1f(uniformsAndAttributes[U_CYCLE_RADIANS], cycle * CONST_DIRTY_PI_2);
-                            gl.uniform1f(uniformsAndAttributes[U_OFFSET_MULTIPLIER], offsetMultiplier);
+                            gl.uniform1f(uniformLocations[U_CYCLE_RADIANS], cycle * CONST_DIRTY_PI_2);
+                            gl.uniform1f(uniformLocations[U_OFFSET_MULTIPLIER], offsetMultiplier);
             
                             modelMatrix = matrix4MultiplyStack(matrixStack);
             
@@ -1060,19 +1080,22 @@ function initShowPlay(
                             offsetBuffer = surface.gridCoordinateBuffer;
                             modelMatrix = surface.pointsToWorld;
 
-                            gl.uniform3fv(uniformsAndAttributes[U_SURFACE_NORMAL], surface.normal);
-                            gl.uniform2f(uniformsAndAttributes[U_GRID_DIMENSION], surface.surfaceWidth, surface.surfaceHeight);
-                            gl.uniform1fv(uniformsAndAttributes[U_GRID_LIGHTING], surface.gridLighting);
+                            gl.uniform3fv(uniformLocations[U_SURFACE_NORMAL], surface.normal);
+                            gl.uniform3f(uniformLocations[U_GRID_DIMENSION], surface.surfaceWidth, surface.surfaceHeight, surface.building&&surface.logo?surface.building.friendliness:0);
+                            if( surface.logo ) {
+                                gl.bindTexture(CONST_GL_TEXTURE_2D, surface.logo);
+                            }
+                            gl.uniform1fv(uniformLocations[U_GRID_LIGHTING], surface.gridLighting);
                             lineColor = CONST_INERT_GRID_COLOR_RGB;
                             directedLightingRange = surface.directedLightingRange;
                         }
                         webglBindAttributeBuffer(gl, offsetBuffer, aVertexOffset, 4); 
             
-                        gl.uniformMatrix4fv(uniformsAndAttributes[U_MODEL_MATRIX], false, modelMatrix);
-                        gl.uniform3fv(uniformsAndAttributes[U_FILL_COLOR], fillColor);
-                        gl.uniform3fv(uniformsAndAttributes[U_LINE_COLOR], lineColor);
-                        gl.uniform4fv(uniformsAndAttributes[U_DIRECTED_LIGHTING_RANGE], directedLightingRange);
-                        gl.uniform1f(uniformsAndAttributes[U_AMBIENT_LIGHT], ambientLighting);
+                        gl.uniformMatrix4fv(uniformLocations[U_MODEL_MATRIX], false, modelMatrix);
+                        gl.uniform4fv(uniformLocations[U_FILL_COLOR], fillColor);
+                        gl.uniform3fv(uniformLocations[U_LINE_COLOR], lineColor);
+                        gl.uniform4fv(uniformLocations[U_DIRECTED_LIGHTING_RANGE], directedLightingRange);
+                        gl.uniform1f(uniformLocations[U_AMBIENT_LIGHT], ambientLighting);
 
                         gl.drawElements(CONST_GL_TRIANGLES, surfaceOrMonster.indicesCount, FLAG_GL_16_BIT_INDEXES?CONST_GL_UNSIGNED_SHORT:CONST_GL_UNSIGNED_BYTE, 0);
                     });
@@ -1091,6 +1114,7 @@ function initShowPlay(
             world.updateWorld(diff);
 
             if( FLAG_BLOOM ) {
+                gl.activeTexture(CONST_GL_TEXTURE0);
                 gl.bindTexture(CONST_GL_TEXTURE_2D, targetTexture);            
                 gl.framebufferTexture2D(CONST_GL_FRAMEBUFFER, CONST_GL_COLOR_ATTACHMENT0, CONST_GL_TEXTURE_2D, targetTexture, 0);
             }
@@ -1238,7 +1262,7 @@ function initShowPlay(
 
             context.fillStyle = context.strokeStyle = '#fff';
             context.globalAlpha = m.abs(sin(world.age/99))/2+.5;
-            context.font = `${CONST_STATUS_HEIGHT}px sans-serif`;
+            context.font = CONST_STATUS_FONT;
             if( displayMessageTime && world.age - displayMessageTime < CONST_MESSAGE_TIME ) {
                 context.textAlign = 'center';
                 context.fillText(displayMessage, canvasWidth/2, canvasHeight/2);

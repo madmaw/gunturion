@@ -35,9 +35,9 @@ function vector3Length(v: Vector3): number {
     return sqrt(vector3DotProduct(v, v));
 }
 
-function vector3Mix(v1: Vector3, v2: Vector3, amt: number) {
+function vectorMix(v1: Vector3, v2: Vector3, amt: number, size) {
     let result: number[] = [];
-    for( let i=0; i<3; i++ ) {        
+    for( let i=0; i<size; i++ ) {        
         result.push(v1[i] * amt + v2[i] * (1 - amt))
     }
     return result;

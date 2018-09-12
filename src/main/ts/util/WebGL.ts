@@ -28,10 +28,11 @@ function webglBindAttributeBuffer(gl: WebGLRenderingContext, buffer: WebGLBuffer
     gl.enableVertexAttribArray(attribute);
 }
 
-function webglCreateTexture(gl: WebGLRenderingContext, width: number, height: number) {
+function webglCreateTexture(gl: WebGLRenderingContext, width: number, height: number, pixels?: ArrayBufferView) {
     let texture = gl.createTexture();
     gl.bindTexture(FLAG_USE_GL_CONSTANTS?gl.TEXTURE_2D:0x0DE1, texture);
-    gl.texImage2D(FLAG_USE_GL_CONSTANTS?gl.TEXTURE_2D:0x0DE1, 0, FLAG_USE_GL_CONSTANTS?gl.RGBA:0x1908, width, height, 0,  FLAG_USE_GL_CONSTANTS?gl.RGBA:0x1908, FLAG_USE_GL_CONSTANTS?gl.UNSIGNED_BYTE:0x1401, null);
+    gl.texImage2D(FLAG_USE_GL_CONSTANTS?gl.TEXTURE_2D:0x0DE1, 0, FLAG_USE_GL_CONSTANTS?gl.RGBA:0x1908, width, height, 0,  FLAG_USE_GL_CONSTANTS?gl.RGBA:0x1908, FLAG_USE_GL_CONSTANTS?gl.UNSIGNED_BYTE:0x1401, pixels);
+    //gl.texImage2D(FLAG_USE_GL_CONSTANTS?gl.TEXTURE_2D:0x0DE1, 0, FLAG_USE_GL_CONSTANTS?gl.RGBA:0x1908, width, height, 0,  FLAG_USE_GL_CONSTANTS?gl.RGBA:0x1908, FLAG_USE_GL_CONSTANTS?gl.UNSIGNED_INT:5125, pixels);
     gl.texParameteri(FLAG_USE_GL_CONSTANTS?gl.TEXTURE_2D:0x0DE1, FLAG_USE_GL_CONSTANTS?gl.TEXTURE_MIN_FILTER:0x2801, FLAG_USE_GL_CONSTANTS?gl.LINEAR:0x2601);
     gl.texParameteri(FLAG_USE_GL_CONSTANTS?gl.TEXTURE_2D:0x0DE1, FLAG_USE_GL_CONSTANTS?gl.TEXTURE_WRAP_S:0x2802, FLAG_USE_GL_CONSTANTS?gl.CLAMP_TO_EDGE:0x812F);
     gl.texParameteri(FLAG_USE_GL_CONSTANTS?gl.TEXTURE_2D:0x0DE1, FLAG_USE_GL_CONSTANTS?gl.TEXTURE_WRAP_T:0x2803, FLAG_USE_GL_CONSTANTS?gl.CLAMP_TO_EDGE:0x812F);

@@ -8,7 +8,8 @@ function flatChunkGeneratorFactory(
     monsterGenerator: MonsterGenerator, 
     rngFactory: RandomNumberGeneratorFactory,
 	audioContext: AudioContext, 
-	say: (message: string, audioMessage?: string) => void
+    say: (message: string, audioMessage?: string) => void, 
+    logoTextSources?:any[]
 ): ChunkGenerator {
 
 	let monsterBirthSound = webAudioVibratoSound3DFactory(audioContext, .4, 0, .2, .1, 'sine', 777, 333);
@@ -49,9 +50,6 @@ function flatChunkGeneratorFactory(
     }
 
     return function(chunkX: number, chunkY: number, world: World): Entity[] {
-                    //([A-Z]|^[a-z])[a-z]{2,}/g
-
-
 
         let x = chunkX * CONST_CHUNK_WIDTH;
         let y = chunkY * CONST_CHUNK_HEIGHT; 
@@ -80,7 +78,7 @@ function flatChunkGeneratorFactory(
         let floor: Surface;
         let minZ = min(eastZ, southZ, northZ);
         
-        let stairs = minZ > z && eastZ == minZ && !tileRng(z/9);
+        let stairs = minZ > z && eastZ == minZ;
         
         let directedLightingRange: Vector4;
         if( stairs ) {
@@ -92,7 +90,7 @@ function flatChunkGeneratorFactory(
                 x, y, z, 
                 width, CONST_CHUNK_HEIGHT, 
                 chunkX, chunkY, 
-                0, angle, 
+                angle, 0,
                 CONST_NEUTRAL_FILL_COLOR, 
                 // adjust ratio so the lines match up with the walls
                 2 / cos(angle), 2, 
@@ -116,10 +114,10 @@ function flatChunkGeneratorFactory(
         if( eastZ > z && !stairs ) {
             let wallWidth = eastZ - z;
             let wall = surfaceGenerator(
-                x + CONST_CHUNK_WIDTH, y, z, 
+                x + CONST_CHUNK_WIDTH, y + CONST_CHUNK_HEIGHT, eastZ, 
                 wallWidth, CONST_CHUNK_HEIGHT, 
                 chunkX, chunkY, 
-                0, CONST_FAIRLY_ACCURATE_PI_DIV_2,  
+                -CONST_FAIRLY_ACCURATE_PI_DIV_2, CONST_FAIRLY_ACCURATE_PI,   
                 CONST_NEUTRAL_FILL_COLOR, 
                 wallWidth, 2,
                 directedLightingRange
@@ -127,31 +125,32 @@ function flatChunkGeneratorFactory(
             entities.push(wall);
         }
         if( northZ > z ) {
-            let wallHeight = northZ - z;
+            let wallWidth = northZ - z;
             let wall = surfaceGenerator(
-                x, y + CONST_CHUNK_HEIGHT, z, 
-                CONST_CHUNK_WIDTH, wallHeight, 
+                x, y + CONST_CHUNK_HEIGHT, northZ, 
+                wallWidth, CONST_CHUNK_WIDTH,
                 chunkX, chunkY, 
-                CONST_FAIRLY_ACCURATE_PI_DIV_2, 0,  
+                -CONST_FAIRLY_ACCURATE_PI_DIV_2, -CONST_FAIRLY_ACCURATE_PI_DIV_2,  
                 CONST_NEUTRAL_FILL_COLOR, 
-                2, wallHeight, 
+                wallWidth, 2, 
                 directedLightingRange
             );
             entities.push(wall);
         }
         if( southZ > z ) {
-            let wallDepth = southZ - z;
+            let wallWidth = southZ - z;
             let wall = surfaceGenerator(
-                x, y, z + wallDepth, 
-                CONST_CHUNK_WIDTH, wallDepth, 
+                x + CONST_CHUNK_WIDTH, y, southZ, 
+                wallWidth, CONST_CHUNK_HEIGHT, 
                 chunkX, chunkY, 
-                -CONST_FAIRLY_ACCURATE_PI_DIV_2, 0,
+                -CONST_FAIRLY_ACCURATE_PI_DIV_2, CONST_FAIRLY_ACCURATE_PI_DIV_2,
                 CONST_NEUTRAL_FILL_COLOR, 
-                2, wallDepth, 
+                wallWidth, 2, 
                 directedLightingRange
             );
             entities.push(wall);
         }
+
         let building = chunkX > 0 && tileRng(2) && !stairs || buildingIsWall;
         // let i = 9;
         // while( building && i ) {
@@ -183,7 +182,22 @@ function flatChunkGeneratorFactory(
             let buildingShift = tileRng(4)+1;
             let walls: Surface[] = [];
             let maxHealth = 0;
-			let fillColor = buildingIsWall?CONST_NEUTRAL_FILL_COLOR:(liberated?CONST_GOOD_FILL_COLOR:CONST_BAD_FILL_COLOR);
+            let fillColor = buildingIsWall?CONST_NEUTRAL_FILL_COLOR:(liberated?CONST_GOOD_FILL_COLOR:CONST_BAD_FILL_COLOR);
+            let logoText: string;
+            if( !ziggurat ) {
+                // should be the one facing the player, the logo will be rotated on any other wall
+                let logoTextSource = logoTextSources[tileRng(logoTextSources.length)];
+                for( logoText in logoTextSource ) {
+                    if( tileRng()<.1 ) {
+                        break;
+                    }
+                }
+                let logoWords = logoText.match(/([A-Z]|^[a-z])[a-z]{2,}/g);
+                if( logoWords ) {
+                    logoText = logoWords[tileRng(logoWords.length)];
+                }
+            }
+
             let onCollision = function(world: World, entity: Entity) {
 				if( entity.side == SIDE_NEUTRAL && !buildingIsWall ) {
                     // it's a player's bullet
@@ -201,202 +215,6 @@ function flatChunkGeneratorFactory(
                     }
                 }
             };
-            let buildingRoof: Surface;
-            let buildingWallSouth: Surface;
-            let buildingFloor: Surface;
-            while( buildingSegments-- && buildingWidth > 1 && buildingHeight > 1 ) {
-
-                let buildingX = x + ((CONST_CHUNK_WIDTH - buildingWidth)>>1);
-                let buildingY = y + ((CONST_CHUNK_HEIGHT - buildingHeight)>>1);
-                
-
-                maxHealth += buildingWidth * buildingHeight * buildingDepth/CONST_BUILDING_VOLUME_HEALTH_RATIO;
-
-                let buildingWallWest = surfaceGenerator( 
-                    buildingX, buildingY, buildingZ, 
-                    buildingWidth, buildingDepth, 
-                    chunkX, chunkY, 
-                    CONST_FAIRLY_ACCURATE_PI_DIV_2, 0, 
-                    fillColor, 
-                    gridScale, gridScale, 
-                    directedLightingRange, 
-                    onCollision
-                );
-            
-                let buildingWallEast = surfaceGenerator( 
-                    buildingX, buildingY + buildingHeight, buildingZ + buildingDepth, 
-                    buildingWidth, buildingDepth, 
-                    chunkX, chunkY, 
-                    -CONST_FAIRLY_ACCURATE_PI_DIV_2, 0, 
-                    fillColor, 
-                    gridScale, gridScale, 
-                    directedLightingRange, 
-                    onCollision
-                );
-                buildingWallSouth = surfaceGenerator(
-                    buildingX, buildingY, buildingZ, 
-                    buildingDepth, buildingHeight, 
-                    chunkX, chunkY, 
-                    0, CONST_FAIRLY_ACCURATE_PI_DIV_2, 
-                    fillColor, 
-                    gridScale, gridScale, 
-                    directedLightingRange, 
-                    onCollision
-                );
-                let buildingWallNorth = surfaceGenerator(
-                    buildingX + buildingWidth, buildingY, buildingZ + buildingDepth, 
-                    buildingDepth, buildingHeight, 
-                    chunkX, chunkY, 
-                    0, -CONST_FAIRLY_ACCURATE_PI_DIV_2, 
-                    fillColor, 
-                    gridScale, gridScale, 
-                    directedLightingRange, 
-                    onCollision
-                );
-                buildingRoof = surfaceGenerator(
-                    buildingX, buildingY, buildingZ + buildingDepth, 
-                    buildingWidth, buildingHeight, 
-                    chunkX, chunkY, 
-                    0, 0, 
-                    fillColor, 
-                    gridScale, gridScale, 
-                    directedLightingRange, 
-                    onCollision
-                );
-                walls.push(buildingWallEast, buildingWallWest, buildingWallSouth, buildingWallNorth, buildingRoof);
-                if( buildingZ > z ) {
-                    // we need a floor too!
-                    buildingFloor = surfaceGenerator(
-                        buildingX + buildingWidth, buildingY, buildingZ, 
-                        buildingWidth, buildingHeight, 
-                        chunkX, chunkY, 
-                        0, CONST_FAIRLY_ACCURATE_PI, 
-                        fillColor, 
-                        gridScale, gridScale, 
-                        directedLightingRange, 
-                        onCollision
-                    );
-                    walls.push(buildingFloor);                    
-                }
-                
-    
-                buildingZ += buildingDepth;
-                buildingDepth >>= buildingShift;
-                buildingDepth -= buildingDepth % gridScale;
-                if( buildingDepth <= 0 ) {
-                    buildingDepth = gridScale;
-                    buildingWidth-=gridScale*2;
-                    buildingHeight-=gridScale*2;    
-                } else {
-                    buildingWidth-=gridScale*(tileRng(2)+1)*2;
-                    buildingHeight-=gridScale*(tileRng(2)+1)*2;    
-                }
-            }
-            let maxSpawnCount = maxHealth/(gridScale * gridScale) | 0;
-            let incubationTime = 999;
-            let spawnCount: number = 0;
-            let spawnGridX: number;
-            let spawnGridY: number;
-            let spawning: boolean;
-            let spawnWall: Surface;
-            let nextSpawn = CONST_SPAWN_REST_INTERVAL;
-            let spawnType: number;
-            let spawnTypes = [];
-            let spawns:{[_:number]:{[_:number]:Monster}} = {};
-            let nextBirth: number = 0;            
-            let damage = liberated?maxHealth:0;
-            let friendliness = damage/maxHealth;
-            let power = damage * friendliness/CONST_BUILDING_DAMAGE_POWER_DIV;
-            let previousDamage = damage;
-
-
-            let spawnTypeCount = tileRng(3) + 1;
-            while( spawnTypeCount-- ) {
-                spawnTypes.push(monsterSeedPalette[tileRng(monsterSeedPalette.length)]);
-            }
-
-            let setWallLight = function(wall: Surface, bit: number, on?: number) {
-                let index = 0;
-                while( bit >= CONST_GL_SAFE_BITS ) {
-                    bit -= CONST_GL_SAFE_BITS;
-                    index++;
-                }
-                let v = wall.gridLighting[index];
-                if( on ) {
-                    v |= (1 << bit);
-                } else {
-                    v &= ~(1 << bit)
-                }
-                wall.gridLighting[index] = v;
-            }
-
-            let spawn = function(now: number, aggro: number, target?: Monster): boolean {
-                // find a surface facing the player
-                let monsterRadius = CONST_BASE_RADIUS * gridScale;
-                let successfulSpawning: boolean;
-                let attemptsRemaining = min(9, tileRng(9) + aggro/99 | 0);
-                while( !successfulSpawning && attemptsRemaining-- && spawnCount < maxSpawnCount ) {
-                    if( spawning ) {
-                        spawnGridX += tileRng(3) - 1;
-                        spawnGridY += tileRng(3) - 1; 
-                    } else {
-                        spawnType = spawnTypes[tileRng(spawnTypes.length)]; 
-                        spawnWall = walls[tileRng(walls.length)];
-                        spawnGridX = tileRng(spawnWall.surfaceWidth/gridScale);
-                        spawnGridY = tileRng(spawnWall.surfaceHeight/gridScale);    
-                    }
-                    successfulSpawning = spawnGridX >= 0 && spawnGridY >= 0 && spawnGridX < spawnWall.surfaceWidth/gridScale && spawnGridY < spawnWall.surfaceHeight/gridScale && (spawnWall == buildingWallSouth && buildingIsWall || !buildingIsWall && spawnWall.normal[2] < CONST_SMALL_NUMBER || spawnWall == buildingRoof || spawnWall == buildingFloor);
-                    if( successfulSpawning ) {
-                        let monsterPosition = vector3TransformMatrix4((spawnGridX + .5) * gridScale, (spawnGridY + .5) * gridScale, monsterRadius+CONST_SMALL_NUMBER, spawnWall.pointsToWorld);
-                        if( target ) {
-                            let targetPosition = [target.x, target.y, target.z];
-                            let positionDiff = vector3Subtract(targetPosition, monsterPosition);
-                            let distance = vector3Length(positionDiff);
-                            let facing = vector3DotProduct(vector3Divide(positionDiff, distance), spawnWall.normal);    
-                            successfulSpawning = !aggro || facing > CONST_BUILDING_PLAYER_SPAWN_COS;    
-                            if( positionDiff[2] > 0 || spawnWall == buildingRoof ) {
-                                // make a flying variant
-                                spawnType &= ~3;
-                            }
-                        }
-                        if( successfulSpawning ) {
-                            //world.addEntity(monster);    
-                            let bit = spawnGridY * spawnWall.surfaceWidth + spawnGridX;
-                            let wallSpawns = spawns[spawnWall.entityId];
-                            if( !wallSpawns ) {
-                                wallSpawns = {};
-                                spawns[spawnWall.entityId] = wallSpawns;
-                            }
-                            successfulSpawning = !wallSpawns[bit];
-                            if( successfulSpawning ) {
-                                let monster = monsterGenerator(
-                                    spawnType, 
-                                    monsterPosition[0], monsterPosition[1], monsterPosition[2], 
-                                    monsterRadius
-                                );
-                                monster.vx = spawnWall.normal[0] * .001;
-                                monster.vy = spawnWall.normal[1] * .001;
-                                monster.birthday = now + incubationTime + tileRng(incubationTime);
-                                // trick it into being brighter because it was born
-                                wallSpawns[bit] = monster;
-                                setWallLight(spawnWall, bit, 1);                            
-                                
-                                spawnCount++;
-                            }
-                        }                    
-                    }    
-                }
-                return successfulSpawning;
-            }
-
-            // spawn until our spawn count is high enough
-            let buildingCx = chunkX * CONST_CHUNK_WIDTH + CONST_CHUNK_WIDTH/2;
-            let buildingCy = chunkY * CONST_CHUNK_HEIGHT + CONST_CHUNK_HEIGHT/2;
-            let player = world.getNearest(buildingCx, buildingCy, SIDE_PLAYER);
-            while( !liberated && spawnCount < maxSpawnCount ) {
-                spawn(0, 0, player);
-            }
-            
             let building: Building = {
                 entityType: -1, 
                 chunkX: chunkX, 
@@ -404,8 +222,6 @@ function flatChunkGeneratorFactory(
                 age: 0, 
                 cleanup: function() {
                 }, 
-                power: power, 
-                friendliness: buildingIsWall?-1:friendliness,
                 side: SIDE_BUILDING, 
                 onUpdate: function(world: World, diff: number) {
                     if( damage < maxHealth ) {
@@ -483,6 +299,216 @@ function flatChunkGeneratorFactory(
                     }    
                 }
             }
+
+            let buildingRoof: Surface;
+            let buildingWallEast: Surface;
+            let buildingFloor: Surface;
+            let first = tileRng(3)+1;
+            while( buildingSegments-- && buildingWidth > 1 && buildingHeight > 1 ) {
+
+                let buildingX = x + ((CONST_CHUNK_WIDTH - buildingWidth)>>1);
+                let buildingY = y + ((CONST_CHUNK_HEIGHT - buildingHeight)>>1);
+
+
+                maxHealth += buildingWidth * buildingHeight * buildingDepth/CONST_BUILDING_VOLUME_HEALTH_RATIO;
+
+                let buildingWallWest = surfaceGenerator( 
+                    buildingX, buildingY, buildingZ, 
+                    buildingDepth, buildingHeight, 
+                    chunkX, chunkY, 
+                    CONST_FAIRLY_ACCURATE_PI_DIV_2, 0, 
+                    fillColor, 
+                    gridScale, gridScale, 
+                    directedLightingRange, 
+                    onCollision, 
+                    first>2?logoText:null, 
+                    building
+                );
+            
+                buildingWallEast = surfaceGenerator( 
+                    buildingX + buildingWidth, buildingY + buildingHeight, buildingZ, 
+                    buildingDepth, buildingHeight, 
+                    chunkX, chunkY, 
+                    CONST_FAIRLY_ACCURATE_PI_DIV_2, CONST_FAIRLY_ACCURATE_PI,   
+                    fillColor, 
+                    gridScale, gridScale, 
+                    directedLightingRange, 
+                    onCollision, 
+                    first>1?logoText:null, 
+                    building
+                );
+    
+                let buildingWallSouth = surfaceGenerator(
+                    buildingX + buildingWidth, buildingY, buildingZ, 
+                    buildingDepth, buildingWidth, 
+                    chunkX, chunkY, 
+                    CONST_FAIRLY_ACCURATE_PI_DIV_2, CONST_FAIRLY_ACCURATE_PI_DIV_2,
+                    fillColor, 
+                    gridScale, gridScale, 
+                    directedLightingRange, 
+                    onCollision, 
+                    first==1?logoText:null, 
+                    building
+                );
+    
+                let buildingWallNorth = surfaceGenerator(
+                    buildingX, buildingY + buildingHeight, buildingZ, 
+                    buildingDepth, buildingWidth, 
+                    chunkX, chunkY, 
+                    CONST_FAIRLY_ACCURATE_PI_DIV_2, -CONST_FAIRLY_ACCURATE_PI_DIV_2, 
+                    fillColor, 
+                    gridScale, gridScale, 
+                    directedLightingRange, 
+                    onCollision, 
+                    first==1?logoText:null, 
+                    building
+                );
+                if( buildingZ > z && first ) {
+                    // we need a floor too!
+                    buildingFloor = surfaceGenerator(
+                        buildingX + buildingWidth, buildingY, buildingZ, 
+                        buildingWidth, buildingHeight, 
+                        chunkX, chunkY, 
+                        CONST_FAIRLY_ACCURATE_PI, 0, 
+                        fillColor, 
+                        gridScale, gridScale, 
+                        directedLightingRange, 
+                        onCollision
+                    );
+                    walls.push(buildingFloor);                    
+                }
+
+                buildingZ += buildingDepth;    
+
+                buildingRoof = surfaceGenerator(
+                    buildingX, buildingY, buildingZ, 
+                    buildingWidth, buildingHeight, 
+                    chunkX, chunkY, 
+                    0, 0, 
+                    fillColor, 
+                    gridScale, gridScale, 
+                    directedLightingRange, 
+                    onCollision
+                );
+                walls.push(buildingWallSouth, buildingWallEast, buildingWallWest, buildingWallNorth, buildingRoof);
+                buildingDepth >>= buildingShift;
+                buildingDepth -= buildingDepth % gridScale;
+                if( buildingDepth <= 0 ) {
+                    buildingDepth = gridScale;
+                    buildingWidth-=gridScale*2;
+                    buildingHeight-=gridScale*2;    
+                } else {
+                    buildingWidth-=gridScale*(tileRng(2)+1)*2;
+                    buildingHeight-=gridScale*(tileRng(2)+1)*2;    
+                }
+                first = 0;
+            }
+            let maxSpawnCount = maxHealth/(gridScale * gridScale) | 0;
+            let incubationTime = 999;
+            let spawnCount: number = 0;
+            let spawnGridX: number;
+            let spawnGridY: number;
+            let spawning: boolean;
+            let spawnWall: Surface;
+            let nextSpawn = CONST_SPAWN_REST_INTERVAL;
+            let spawnType: number;
+            let spawnTypes = [];
+            let spawns:{[_:number]:{[_:number]:Monster}} = {};
+            let nextBirth: number = 0;            
+            let damage = liberated?maxHealth:0;
+            let friendliness = damage/maxHealth;
+            building.friendliness = friendliness;
+            building.power = damage * friendliness/CONST_BUILDING_DAMAGE_POWER_DIV;
+            let previousDamage = damage;
+
+
+            let spawnTypeCount = tileRng(3) + 1;
+            while( spawnTypeCount-- ) {
+                spawnTypes.push(monsterSeedPalette[tileRng(monsterSeedPalette.length)]);
+            }
+
+            let setWallLight = function(wall: Surface, bit: number, on?: number) {
+                let index = 0;
+                while( bit >= CONST_GL_SAFE_BITS ) {
+                    bit -= CONST_GL_SAFE_BITS;
+                    index++;
+                }
+                let v = wall.gridLighting[index];
+                if( on ) {
+                    v |= (1 << bit);
+                } else {
+                    v &= ~(1 << bit)
+                }
+                wall.gridLighting[index] = v;
+            }
+
+            let spawn = function(now: number, aggro: number, target?: Monster): boolean {
+                // find a surface facing the player
+                let monsterRadius = CONST_BASE_RADIUS * gridScale;
+                let successfulSpawning: boolean;
+                let attemptsRemaining = min(9, tileRng(9) + aggro/99 | 0);
+                while( !successfulSpawning && attemptsRemaining-- && spawnCount < maxSpawnCount ) {
+                    if( spawning ) {
+                        spawnGridX += tileRng(3) - 1;
+                        spawnGridY += tileRng(3) - 1; 
+                    } else {
+                        spawnType = spawnTypes[tileRng(spawnTypes.length)]; 
+                        spawnWall = walls[tileRng(walls.length)];
+                        spawnGridX = tileRng(spawnWall.surfaceWidth/gridScale);
+                        spawnGridY = tileRng(spawnWall.surfaceHeight/gridScale);    
+                    }
+                    successfulSpawning = spawnGridX >= 0 && spawnGridY >= 0 && spawnGridX < spawnWall.surfaceWidth/gridScale && spawnGridY < spawnWall.surfaceHeight/gridScale && (spawnWall == buildingWallEast && buildingIsWall || !buildingIsWall && spawnWall.normal[2] < CONST_SMALL_NUMBER || spawnWall == buildingRoof || spawnWall == buildingFloor);
+                    if( successfulSpawning ) {
+                        let monsterPosition = vector3TransformMatrix4((spawnGridX + .5) * gridScale, (spawnGridY + .5) * gridScale, monsterRadius+CONST_SMALL_NUMBER, spawnWall.pointsToWorld);
+                        if( target ) {
+                            let targetPosition = [target.x, target.y, target.z];
+                            let positionDiff = vector3Subtract(targetPosition, monsterPosition);
+                            let distance = vector3Length(positionDiff);
+                            let facing = vector3DotProduct(vector3Divide(positionDiff, distance), spawnWall.normal);    
+                            successfulSpawning = !aggro || facing > CONST_BUILDING_PLAYER_SPAWN_COS;    
+                            if( positionDiff[2] > 0 || spawnWall == buildingRoof ) {
+                                // make a flying variant
+                                spawnType &= ~3;
+                            }
+                        }
+                        if( successfulSpawning ) {
+                            //world.addEntity(monster);    
+                            let bit = spawnGridY * spawnWall.surfaceWidth + spawnGridX;
+                            let wallSpawns = spawns[spawnWall.entityId];
+                            if( !wallSpawns ) {
+                                wallSpawns = {};
+                                spawns[spawnWall.entityId] = wallSpawns;
+                            }
+                            successfulSpawning = !wallSpawns[bit];
+                            if( successfulSpawning ) {
+                                let monster = monsterGenerator(
+                                    spawnType, 
+                                    monsterPosition[0], monsterPosition[1], monsterPosition[2], 
+                                    monsterRadius
+                                );
+                                monster.vx = spawnWall.normal[0] * .001;
+                                monster.vy = spawnWall.normal[1] * .001;
+                                monster.birthday = now + incubationTime + tileRng(incubationTime);
+                                // trick it into being brighter because it was born
+                                wallSpawns[bit] = monster;
+                                setWallLight(spawnWall, bit, 1);                            
+                                
+                                spawnCount++;
+                            }
+                        }                    
+                    }    
+                }
+                return successfulSpawning;
+            }
+
+            // spawn until our spawn count is high enough
+            let buildingCx = chunkX * CONST_CHUNK_WIDTH + CONST_CHUNK_WIDTH/2;
+            let buildingCy = chunkY * CONST_CHUNK_HEIGHT + CONST_CHUNK_HEIGHT/2;
+            let player = world.getNearest(buildingCx, buildingCy, SIDE_PLAYER);
+            while( !liberated && spawnCount < maxSpawnCount ) {
+                spawn(0, 0, player);
+            }
+            
             entities.push.apply(entities, walls);
             entities.push(building);
 
