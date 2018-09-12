@@ -282,7 +282,7 @@ function initShowPlay(
     let victory: number;
     let sunColor = '#000';
     let sunCaladeraColor = '#c6c';
-    let skyColor = CONST_FOG_COLOR_RGB;
+    let skyColor = CONST_SKY_COLOR_HIGH_RGB;
  
 
 
@@ -527,7 +527,7 @@ function initShowPlay(
                     while( x < canvasWidth ) {
                         let y = (rng(canvasHeight) + canvasHeight*4)*(sqrt(6 - i))/25 + canvasHeight/2;
                         let w = (rng(canvasWidth/19) + canvasWidth/49) / (aspectRatio * i);
-                        context.fillRect(x, y, w, canvasHeight);
+                        context.fillRect(x, y, w+1, canvasHeight);
                         x += w;
                     }    
                 }
