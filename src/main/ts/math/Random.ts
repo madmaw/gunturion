@@ -10,8 +10,8 @@ function sinRandomNumberGeneratorFactory(baseSeed: number): RandomNumberGenerato
     return function (bonusSeed: number) {
         let seed = baseSeed + bonusSeed;
         return function (range?:number): number {
-            var x = Math.sin(seed++) * 1e5;
-            var r = x - Math.floor(x);
+            var x = sin(seed++) * 1e5;
+            var r = x - floor(x);
             if (range) {
                 r = (r * range) | 0;
             }

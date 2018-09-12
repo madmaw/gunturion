@@ -143,7 +143,7 @@ void main(){
     float ${L_DISTANCE_SQUARED}=${V_RELATIVE_POSITION}.x*${V_RELATIVE_POSITION}.x+${V_RELATIVE_POSITION}.y*${V_RELATIVE_POSITION}.y+${V_RELATIVE_POSITION}.z*${V_RELATIVE_POSITION}.z;
     float ${L_DISTANCE}=sqrt(${L_DISTANCE_SQUARED});
     float ${L_FOGGINESS}=0.;
-    if(${L_DISTANCE}<${CONST_VISIBLE_DISTANCE}.) {
+    if(${L_DISTANCE}<${CONST_VISIBLE_DISTANCE}.){
         ${L_FOGGINESS}=clamp((${CONST_VISIBLE_DISTANCE_SQUARED}.-${L_DISTANCE_SQUARED})/${CONST_VISIBLE_DISTANCE_SQUARED}.,0.,1.);
     }
     vec3 ${L_GRID_COLOR}=vec3(0.);
@@ -209,23 +209,23 @@ void main(){
         float ${L_FOCUS}=sqrt(${L_PREVIOUS_COLOR}.a)*${U_CAMERA_LIGHT}.z;
         ${L_CURRENT_COLOR}=vec4((${L_CURRENT_COLOR}.rgb*${L_FOCUS}+${L_PREVIOUS_COLOR}.rgb*(1.-${L_FOCUS}))*${U_CAMERA_LIGHT}.w,${L_CURRENT_COLOR}.a);
     }
-    gl_FragColor = ${L_CURRENT_COLOR};
+    gl_FragColor=${L_CURRENT_COLOR};
 }`;
 
 interface ShowPlay {
-    (restart: ()=> void) : void;
+    (restart?: (()=> void)|any) : void;
 }
 
 function initShowPlay(
-    seed: number,
-    rngFactory: RandomNumberGeneratorFactory,
     audioContext: AudioContext 
 ): ShowPlay {
-    let offscreenCanvas = document.getElementById('a') as HTMLCanvasElement;
+
+    //let offscreenCanvas = d.getElementById('a') as HTMLCanvasElement;
+    let offscreenCanvas = d.createElement('canvas');
     let gl = offscreenCanvas.getContext('webgl');
-    let canvas = document.getElementById('b') as HTMLCanvasElement;
+    let canvas = d.getElementById('b') as HTMLCanvasElement;
     let context = canvas.getContext('2d');
-    let skybox = document.createElement('img');
+    let skybox = d.createElement('img');
     let inputCanvas: HTMLCanvasElement;
     if( FLAG_BLOOM ) {
         inputCanvas = canvas;
@@ -259,7 +259,6 @@ function initShowPlay(
 
     
 
-	let monsterGenerator = monsterGeneratorFactory(gl, rngFactory, audioContext);
 	let surfaceGenerator = surfaceGeneratorFactory(gl);
 
     let textureData: Uint8Array;
@@ -280,91 +279,12 @@ function initShowPlay(
     let deathSound = webAudioBoomSoundFactory(audioContext, 2, .2, 499, 1.5, 1);
 	let painSound = webAudioVibratoSound3DFactory(audioContext, .5, 0, .4, .2, 'sawtooth', 299, -99);
     let stepSound = webAudioBoomSoundFactory(audioContext, .05, .01, 2e3, .1, .05);
-    let rng = rngFactory(9);
+    let victory: number;
+    let sunColor = '#000';
+    let sunCaladeraColor = '#c6c';
+    let skyColor = CONST_FOG_COLOR_RGB;
  
-    // NOTE: regenerate should be a boolean really, but onresize passes some truthy value
-    let resize = function(regenerate?: any) {
 
-        canvasWidth = window.innerWidth;
-        canvasHeight = window.innerHeight;
-        
-
-        offscreenCanvas.width = canvas.width = canvasWidth;
-        offscreenCanvas.height = canvas.height = canvasHeight;
-
-        if( FLAG_BLOOM ) {
-            textureData = new Uint8Array(canvasWidth * canvasHeight * 4);
-            textureImageData = context.createImageData(canvasWidth, canvasHeight);    
-        }
-        if( sourceTexture && FLAG_CLEAN_UP_ON_RESIZE ) {
-            gl.deleteTexture(sourceTexture);
-            gl.deleteTexture(targetTexture);            
-            if( FLAG_BLOOM ) {
-                gl.deleteFramebuffer(frameBuffer);
-                gl.deleteRenderbuffer(depthBuffer);    
-            }
-        }
-        if( regenerate ) {
-            sourceTexture = webglCreateTexture(gl, canvasWidth, canvasHeight);
-            targetTexture = webglCreateTexture(gl, canvasWidth, canvasHeight);    
-            if( FLAG_BLOOM ) {
-                frameBuffer = gl.createFramebuffer();
-                depthBuffer = gl.createRenderbuffer();
-
-                gl.bindFramebuffer(CONST_GL_FRAMEBUFFER, frameBuffer);
-                gl.bindRenderbuffer(CONST_GL_RENDERBUFFER, depthBuffer);
-            
-                gl.renderbufferStorage(CONST_GL_RENDERBUFFER, CONST_GL_DEPTH_COMPONENT16, canvasWidth, canvasHeight);
-                gl.framebufferRenderbuffer(CONST_GL_FRAMEBUFFER, CONST_GL_DEPTH_ATTACHMENT, CONST_GL_RENDERBUFFER, depthBuffer);    
-            }
-        }
-
-        aspectRatio = canvasWidth/canvasHeight;
-        fovX = 2 * Math.atan(Math.tan(CONST_FOV_Y/2) * aspectRatio);
-        if( FLAG_BLOOM ) {
-            projectionMatrix = matrix4PerspectiveFlippedY(
-                CONST_FOV_Y, 
-                aspectRatio, 
-                CONST_BASE_RADIUS/2, 
-                CONST_VISIBLE_DISTANCE
-            );    
-        } else {
-            projectionMatrix = matrix4Perspective(
-                CONST_FOV_Y, 
-                aspectRatio, 
-                CONST_BASE_RADIUS/2, 
-                CONST_VISIBLE_DISTANCE
-            );
-        }
-    
-        // pretty sure we didn't use to need this?
-        gl.viewport(0, 0, canvasWidth, canvasHeight);
-
-        if( FLAG_BACKGROUND ) {
-            // (p)re-render the background
-
-            // let skyGradient = context.createLinearGradient(0, 0, 0, canvasHeight/2);
-            // skyGradient.addColorStop(0, CONST_SKY_COLOR_HIGH_RGB);
-            // skyGradient.addColorStop(1, CONST_SKY_COLOR_LOW_RGB);
-            // context.fillStyle = skyGradient;
-            // context.fillRect(0, 0, canvasWidth, canvasHeight);
-            let rng = rngFactory(0);
-            let i = 5;
-            while( --i ) {
-                context.fillStyle = CONST_BUILDING_COLORS_RGB[i - 1];
-
-                let x = 0;
-                while( x < canvasWidth ) {
-                    let y = (rng(canvasHeight) + canvasHeight*4)*(Math.sqrt(6 - i))/25 + canvasHeight/2;
-                    let w = (rng(canvasWidth/19) + canvasWidth/49) / (aspectRatio * i);
-                    context.fillRect(x, y, w, canvasHeight);
-                    x += w;
-                }    
-            }
-
-            skybox.src = canvas.toDataURL();
-        }
-    }
 
     // turn on the extension(s) we use
     gl.getExtension('OES_standard_derivatives');
@@ -414,6 +334,7 @@ function initShowPlay(
     let aGridCoordinate = gl.getAttribLocation(shaderProgram, A_GRID_COORDINATE);
     let aVertexOffset = gl.getAttribLocation(shaderProgram, A_VERTEX_OFFSET);
 
+    /*
     let uProjectionMatrix = gl.getUniformLocation(shaderProgram, U_PROJECTION_MATRIX);
     let uModelMatrix = gl.getUniformLocation(shaderProgram, U_MODEL_MATRIX);
     let uViewMatrix = gl.getUniformLocation(shaderProgram, U_VIEW_MATRIX);
@@ -434,11 +355,188 @@ function initShowPlay(
     let uSurfaceNormal = gl.getUniformLocation(shaderProgram, U_SURFACE_NORMAL);
     let uPowerSources = gl.getUniformLocation(shaderProgram, U_POWER_SOURCES);
     let uPowerSourceCount = gl.getUniformLocation(shaderProgram, U_POWER_SOURCE_COUNT);
+    */
 
-    let play = function(onRestart: () => void) {
+    let uniformsAndAttributes: {[_:string]: WebGLUniformLocation | number} = {};
+    if( FLAG_SHORTEN_GLSL_VARIABLES ) {
+        let uniformString =         
+            U_PROJECTION_MATRIX+
+            U_MODEL_MATRIX+
+            U_VIEW_MATRIX+
+            U_PREVIOUS_VIEW_MATRIX+
+            U_FILL_COLOR+
+            U_LINE_COLOR+
+            U_CAMERA_LIGHT+
+            U_AMBIENT_LIGHT+
+            U_PREVIOUS+
+            U_PREVIOUS_DIMENSION+
+            U_GRID_MODE+
+            U_GRID_DIMENSION+
+            U_GRID_LIGHTING+
+            U_CYCLE_RADIANS+
+            U_OFFSET_MULTIPLIER+
+            U_DIRECTED_LIGHTING_NORMAL+
+            U_DIRECTED_LIGHTING_RANGE+
+            U_SURFACE_NORMAL+
+            U_POWER_SOURCES+
+            U_POWER_SOURCE_COUNT;
+        let uniformCount = 20;
+        while( uniformCount-- ) {
+            let c = uniformString[uniformCount];
+            uniformsAndAttributes[c] = gl.getUniformLocation(shaderProgram, c);        
+        }
+    } else {
+        let attributeNames = [
+        ];
+        let uniformNames = [
+            U_PROJECTION_MATRIX,
+            U_MODEL_MATRIX,
+            U_VIEW_MATRIX,
+            U_PREVIOUS_VIEW_MATRIX,
+            U_FILL_COLOR,
+            U_LINE_COLOR,
+            U_CAMERA_LIGHT,
+            U_AMBIENT_LIGHT,
+            U_PREVIOUS,
+            U_PREVIOUS_DIMENSION,
+            U_GRID_MODE,
+            U_GRID_DIMENSION,
+            U_GRID_LIGHTING,
+            U_CYCLE_RADIANS,
+            U_OFFSET_MULTIPLIER,
+            U_DIRECTED_LIGHTING_NORMAL,
+            U_DIRECTED_LIGHTING_RANGE,
+            U_SURFACE_NORMAL,
+            U_POWER_SOURCES,
+            U_POWER_SOURCE_COUNT            
+        ];
+        uniformsAndAttributes = webglGetUniformAndAttributeLocations(gl, shaderProgram, uniformNames, attributeNames);
+    }
+
+    // webglGetUniformLocations(gl, shaderProgram, [
+    //     U_PROJECTION_MATRIX, 
+    //     U_MODEL_MATRIX,
+    //     U_VIEW_MATRIX,
+    //     U_PREVIOUS_VIEW_MATRIX, 
+    //     U_FILL_COLOR, 
+    //     U_LINE_COLOR, 
+    //     U_CAMERA_LIGHT, 
+    //     U_AMBIENT_LIGHT, 
+    //     U_PREVIOUS, 
+    //     U_PREVIOUS_DIMENSION, 
+    //     U_GRID_MODE, 
+    //     U_GRID_DIMENSION, 
+    //     U_GRID_LIGHTING, 
+    //     U_CYCLE_RADIANS, 
+    //     U_OFFSET_MULTIPLIER, 
+    //     U_DIRECTED_LIGHTING_NORMAL, 
+    //     U_DIRECTED_LIGHTING_RANGE, 
+    //     U_SURFACE_NORMAL, 
+    //     U_POWER_SOURCES, 
+    //     U_POWER_SOURCE_COUNT
+    // ]);
+    
+    
+    let play = function(onRestart?: () => void) {
+        let seed: number;
+        if( FLAG_PERSISTENT_SEED ) {
+            seed = ls.getItem(0 as any) as any/1;        
+        }
+        if( !seed ) {
+            if( CONST_WORLD_SEED ) {
+                seed = CONST_WORLD_SEED;
+            } else {
+                seed = floor(m.random() * CONST_BIG_NUMBER);
+            }    
+        }
+        let rngFactory = sinRandomNumberGeneratorFactory(seed);
+        let rng = rngFactory(9);    
         let animationFrameHandle: number;
+        // NOTE: regenerate should be a boolean really, but onresize passes some truthy value
+        let resize = function(regenerate?: any) {
+
+            canvasWidth = innerWidth;
+            canvasHeight = innerHeight;
+            
+
+            offscreenCanvas.width = canvas.width = canvasWidth;
+            offscreenCanvas.height = canvas.height = canvasHeight;
+
+            if( FLAG_BLOOM ) {
+                textureData = new Uint8Array(canvasWidth * canvasHeight * 4);
+                textureImageData = context.createImageData(canvasWidth, canvasHeight);    
+            }
+            if( sourceTexture && FLAG_CLEAN_UP_ON_RESIZE ) {
+                gl.deleteTexture(sourceTexture);
+                gl.deleteTexture(targetTexture);            
+                if( FLAG_BLOOM ) {
+                    gl.deleteFramebuffer(frameBuffer);
+                    gl.deleteRenderbuffer(depthBuffer);    
+                }
+            }
+            if( regenerate ) {
+                sourceTexture = webglCreateTexture(gl, canvasWidth, canvasHeight);
+                targetTexture = webglCreateTexture(gl, canvasWidth, canvasHeight);    
+                if( FLAG_BLOOM ) {
+                    frameBuffer = gl.createFramebuffer();
+                    depthBuffer = gl.createRenderbuffer();
+
+                    gl.bindFramebuffer(CONST_GL_FRAMEBUFFER, frameBuffer);
+                    gl.bindRenderbuffer(CONST_GL_RENDERBUFFER, depthBuffer);
+                
+                    gl.renderbufferStorage(CONST_GL_RENDERBUFFER, CONST_GL_DEPTH_COMPONENT16, canvasWidth, canvasHeight);
+                    gl.framebufferRenderbuffer(CONST_GL_FRAMEBUFFER, CONST_GL_DEPTH_ATTACHMENT, CONST_GL_RENDERBUFFER, depthBuffer);    
+                }
+            }
+
+            aspectRatio = canvasWidth/canvasHeight;
+            fovX = 2 * m.atan(CONST_TAN_FOV_Y_DIV_2 * aspectRatio);
+            if( FLAG_BLOOM ) {
+                projectionMatrix = matrix4PerspectiveFlippedY(
+                    CONST_TAN_FOV_Y_DIV_2, 
+                    aspectRatio, 
+                    CONST_BASE_RADIUS/2, 
+                    CONST_VISIBLE_DISTANCE
+                );    
+            } else {
+                projectionMatrix = matrix4Perspective(
+                    CONST_TAN_FOV_Y_DIV_2, 
+                    aspectRatio, 
+                    CONST_BASE_RADIUS/2, 
+                    CONST_VISIBLE_DISTANCE
+                );
+            }
+        
+            // pretty sure we didn't use to need this?
+            gl.viewport(0, 0, canvasWidth, canvasHeight);
+
+            if( FLAG_BACKGROUND ) {
+                // (p)re-render the background
+
+                // let skyGradient = context.createLinearGradient(0, 0, 0, canvasHeight/2);
+                // skyGradient.addColorStop(0, CONST_SKY_COLOR_HIGH_RGB);
+                // skyGradient.addColorStop(1, CONST_SKY_COLOR_LOW_RGB);
+                // context.fillStyle = skyGradient;
+                // context.fillRect(0, 0, canvasWidth, canvasHeight);
+                let rng = rngFactory(0);
+                let i = 5;
+                while( --i ) {
+                    context.fillStyle = CONST_BUILDING_COLORS_RGB[i - 2];
+
+                    let x = 0;
+                    while( x < canvasWidth ) {
+                        let y = (rng(canvasHeight) + canvasHeight*4)*(sqrt(6 - i))/25 + canvasHeight/2;
+                        let w = (rng(canvasWidth/19) + canvasWidth/49) / (aspectRatio * i);
+                        context.fillRect(x, y, w, canvasHeight);
+                        x += w;
+                    }    
+                }
+
+                skybox.src = canvas.toDataURL();
+            }
+        };
         let destroy = function() {
-			window.cancelAnimationFrame(animationFrameHandle);
+			cancelAnimationFrame(animationFrameHandle);
 			if( !FLAG_NO_LOADING ) {
 				canvas.className = '';
 				if( !FLAG_BLOOM ) {
@@ -446,17 +544,17 @@ function initShowPlay(
 				}	
 			}
             if( FLAG_CLEANUP_EVENT_HANDLERS_ON_DESTROY ) {
-                window.onresize = null;
-                window.onkeydown = null;
-                window.onkeyup = null;
+                onresize = null;
+                onkeydown = null;
+                onkeyup = null;
                 inputCanvas.onmousedown = null;
                 inputCanvas.onmouseup = null;
             }
             for(let side in world.allEntities ) {
                 let sideEntities = world.allEntities[side];
-                for( let entity of sideEntities ) {
+                sideEntities.map(function(entity) {
                     entity.cleanup();
-                }
+                })
             }
             resize();
         }
@@ -469,9 +567,9 @@ function initShowPlay(
     
         resize(1); 
     
-        window.onresize = resize;
+        onresize = resize;
 
-        let posString = localStorage.getItem(''+seed);
+        let posString = ls.getItem(seed as any);
         let pos: Vector3;
         if( posString ) {
             pos = JSON.parse(posString);
@@ -480,8 +578,8 @@ function initShowPlay(
         }
         
         let say = function(message: string, pronunciation?: string) {
-            if( FLAG_SPEECH && window.speechSynthesis ) {
-                let ut = new SpeechSynthesisUtterance(pronunciation?pronunciation:message);
+            if( FLAG_SPEECH && (!FLAG_CHECK_SPEECH || window.speechSynthesis) ) {
+                let ut = new SpeechSynthesisUtterance(pronunciation && FLAG_PRONOUCE_PROPERLY?pronunciation:message);
                 ut.rate = .8;
                 speechSynthesis.speak(ut);
                 ut.onend = function() {
@@ -491,6 +589,7 @@ function initShowPlay(
             displayMessage = message;
             displayMessageTime = world.age;
         }
+        let monsterGenerator = monsterGeneratorFactory(gl, rngFactory, audioContext);
         let chunkGenerator = flatChunkGeneratorFactory(seed, surfaceGenerator, monsterGenerator, rngFactory, audioContext, say);
         
         // let player = monsterGenerator(25, -0.000007635353276777558, -4.675305475382446e-22, 0.4900000000000674, CONST_BASE_RADIUS);
@@ -525,7 +624,7 @@ function initShowPlay(
             player.onUpdate = function(this: Monster, world: World, amt: number) {
                 let left = keyStates[37] || keyStates[65];
                 let right = keyStates[39] || keyStates[68];
-                let forward = Math.max(keyStates[38], keyStates[87]);
+                let forward = max(keyStates[38], keyStates[87]);
                 let backward = keyStates[40] || keyStates[83];
                 let running = keyStates[16] || forward < lastRunningRelease;
                 let jumping = keyStates[32];
@@ -539,10 +638,10 @@ function initShowPlay(
                 player.rx = dy * 3 / canvasHeight; 
                 player.rz = dx * 3 / canvasWidth;
     
-                let sinZ = Math.sin(player.rz);
-                let cosZ = Math.cos(player.rz);
-                let sinZSide = Math.sin(player.rz - CONST_DIRTY_PI_DIV_2);
-                let cosZSide = Math.cos(player.rz - CONST_DIRTY_PI_DIV_2);
+                let sinZ = sin(player.rz);
+                let cosZ = cos(player.rz);
+                let sinZSide = sin(player.rz - CONST_DIRTY_PI_ON_2);
+                let cosZSide = cos(player.rz - CONST_DIRTY_PI_ON_2);
     
                 let vx = 0;
                 let vy = 0;
@@ -554,7 +653,7 @@ function initShowPlay(
                     vx -= baseVelocity * cosZSide;
                     vy -= baseVelocity * sinZSide;
                 }
-                let previousWalkCos = Math.cos(walkDistance);
+                let previousWalkCos = cos(walkDistance);
                 if( forward ) {
                     vx += forwardVelocity * cosZ;
                     vy += forwardVelocity * sinZ;
@@ -565,11 +664,11 @@ function initShowPlay(
                     vy -= baseVelocity * sinZ;
                     walkDistance -= baseVelocity * amt;
                 }
-                let walkCos =Math.cos(walkDistance); 
+                let walkCos =cos(walkDistance); 
                 if( walkCos >= 0 && previousWalkCos < 0 || walkCos < 0 && previousWalkCos >= 0) {
                     stepSound(player.x, player.y, player.z - player.radius);
                 }
-                if( FLAG_ALLOW_JUMPING && jumping && lastFloor > jumping ) {
+                if( FLAG_ALLOW_JUMPING && jumping && lastFloor + CONST_CHARGE_FLOOR_DIFF > jumping ) {
                     player.vz = .015;
                     lastFloor = 0;
                 }
@@ -601,20 +700,20 @@ function initShowPlay(
                         let dy = player.y - buildingY;
                         let dsq = dx * dx + dy * dy;
                         if ( dsq < building.power * building.power ) {
-                            let d = Math.sqrt(dsq);
+                            let d = sqrt(dsq);
                             let p = building.friendliness*(building.power - d)/building.power;
                             power += p*p*building.power/CONST_BASE_BUILDING_POWER;
                         }
                     }
-                    battery = Math.min(maxBattery, battery + Math.sqrt(power)/amt);
+                    battery = min(maxBattery, battery + sqrt(power)/amt);
                 }
                 lastPower = power;
                 if( shooting && battery >= CONST_BASE_BULLET_COST ) {
                     let shotInterval = CONST_BASE_BULLET_INTERVAL;
                     if( player.age > lastShot + shotInterval ) {
                         battery -= CONST_BASE_BULLET_COST;
-                        let sinX = Math.sin(player.rx);
-                        let cosX = Math.cos(player.rx);
+                        let sinX = sin(player.rx);
+                        let cosX = cos(player.rx);
                         if( lastShot + shotInterval + amt > player.age ) {
                             lastShot = lastShot + shotInterval;
                         } else {
@@ -655,12 +754,29 @@ function initShowPlay(
                         world.addEntity(bullet);
                     }
                 }
+                if(!victory && player.x > CONST_FINISH_X) {
+                    victory = 1;
+                    say("YOU ESCAPED");
+                    // reset the seed for the net game
+                    ls.setItem(0 as any, rng(CONST_BIG_NUMBER) as any);
+                    sunColor = '#FF5';
+                    sunCaladeraColor = '#CCC';
+                    skyColor = '#99E';
+                }
                 if( lastBattery >= CONST_BASE_BULLET_COST && battery < CONST_BASE_BULLET_COST && !power ) {
                     // issue a warning
-                    say("WEAPON OFFLINE", 'WEAPON OFF LINE');
+                    if( FLAG_PRONOUCE_PROPERLY ) {
+                        say("WEAPON OFFLINE", 'WEAPON OFF LINE');
+                    } else {
+                        say("WEAPON OFF-LINE");
+                    }
                     weaponHasBeenOffline = 1;
                 } else if( lastBattery >= CONST_BATTERY_WARNING && battery < CONST_BATTERY_WARNING && !shieldHasBeenOffline ) {
-                    say("SHIELD OFFLINE", "SHEELED OFF LINE");
+                    if( FLAG_PRONOUCE_PROPERLY ) {
+                        say("SHIELD OFFLINE", "SHEELED OFF LINE");
+                    } else {
+                        say("SHIELD OFF-LINE");
+                    }
                     shieldHasBeenOffline = 1;
                 } else if( lastBattery < CONST_BASE_BULLET_COST && battery >= CONST_BASE_BULLET_COST && weaponHasBeenOffline ) {
                     say('WEAPON ONLINE');
@@ -679,8 +795,8 @@ function initShowPlay(
                             let powerup = other as Monster;
                             if( powerup.seed == CONST_BATTERY_SEED ) {
                                 batteryLevel ++;
-                                maxBattery = Math.pow(batteryLevel, CONST_BATTERY_LEVEL_EXPONENT);
-                                battery ++;
+                                maxBattery = m.pow(batteryLevel, CONST_BATTERY_LEVEL_EXPONENT);
+                                battery += CONST_BASE_BULLET_COST;
                                 lastBatteryBoost = world.age;
                                 powerupSound(player.x, player.y, player.z);    
                             } else {
@@ -698,17 +814,21 @@ function initShowPlay(
                             powerup.deathAge = powerup.age;
                         } else {
                             if( !FLAG_TEST_PHYSICS ) {
-                                painSound(player.x, player.y, player.z);
-                                if( battery >= CONST_BATTERY_WARNING ) {
-                                    // kill the monster, survive
-                                    battery -= CONST_BATTERY_WARNING;
-                                    lastHit = world.age;
-                                    lastShot = world.age + CONST_WINCE_DURATION;
-                                    let otherMonster = other as Monster;
+                                let otherMonster = other as Monster;
+                                if( player.lastDamageAge + CONST_PLAYER_INVULNERABILITY_DURATION > world.age ) {
                                     otherMonster.deathAge = otherMonster.age;
                                 } else {
-                                    player.die(world, other);
-    
+                                    painSound(player.x, player.y, player.z);
+                                    if( battery >= CONST_BATTERY_WARNING ) {
+                                        // kill the monster, survive
+                                        battery -= CONST_BATTERY_WARNING;
+                                        player.lastDamageAge = world.age;
+                                        lastShot = world.age + CONST_WINCE_DURATION;
+                                        otherMonster.deathAge = otherMonster.age;
+                                    } else {
+                                        player.die(world, other);
+        
+                                    }
                                 }
                             }    
                         }
@@ -731,11 +851,10 @@ function initShowPlay(
         //player.specialMatrix = matrix4Translate(2, 0, -player.radius/2);
         let lastShot = 0;
         let batteryLevel = CONST_STARTING_BATTERY;
-        let maxBattery = Math.pow(batteryLevel, CONST_BATTERY_LEVEL_EXPONENT);
+        let maxBattery = m.pow(batteryLevel, CONST_BATTERY_LEVEL_EXPONENT);
         let battery = maxBattery;
         let lastBattery = battery;
 		let lastBatteryBoost = 0;
-		let lastHit = 0;
         let lastFloor = 0;
         let lastPower = 0;
 		let weaponHasBeenOffline: number;
@@ -761,11 +880,11 @@ function initShowPlay(
         };
         inputCanvas.onmousedown = function(e: MouseEvent) {
             if( !e.button ) {
-                if( document.pointerLockElement == inputCanvas ) {
+                if( d.pointerLockElement == inputCanvas ) {
                     if( player.deathAge ) {
                         // request restart
                         destroy();
-                        onRestart();
+                        onRestart&&FLAG_HOME_SCREEN?onRestart():play();
                     } else {
                         shooting = world.age;
                     }
@@ -778,19 +897,19 @@ function initShowPlay(
             shooting = 0;
         }     
         inputCanvas.onmousemove = function(e: MouseEvent) {
-            if( document.pointerLockElement == inputCanvas ) {
+            if( d.pointerLockElement == inputCanvas ) {
                 
                 dx -= e.movementX;
-                dy = Math.min(canvasHeight/2, Math.max(-canvasHeight/2, dy - e.movementY));    
+                dy = min(canvasHeight/2, max(-canvasHeight/2, dy - e.movementY));    
             }
         }
-        window.onkeydown = function(e: KeyboardEvent) {
+        onkeydown = function(e: KeyboardEvent) {
             let keyCode = e.keyCode;
             if( !keyStates[keyCode] ) {
                 keyStates[keyCode] = world.age;
             }
         }
-        window.onkeyup = function(e: KeyboardEvent) {
+        onkeyup = function(e: KeyboardEvent) {
             let keyCode = e.keyCode;
             keyStates[keyCode] = 0;
             if( keyCode == 16 ) {
@@ -808,55 +927,63 @@ function initShowPlay(
     
             let buildings = world.allEntities[SIDE_BUILDING] as Building[];
             let powerSources: number[] = [];
-            let powerSourceCount = Math.min(buildings.length, C_MAX_POWER_SOURCES);
-            let powerBoost = Math.sin(world.age/399)/9 + 1;
+            let powerSourceCount = min(buildings.length, C_MAX_POWER_SOURCES);
+            let powerBoost = sin(world.age/399)/9 + 1;
             for( let i=0; i<powerSourceCount; i++ ) {
                 let building = buildings[i] as Building;
                 powerSources.push(
                     building.chunkX * CONST_CHUNK_WIDTH + CONST_CHUNK_WIDTH/2, 
                     building.chunkY * CONST_CHUNK_HEIGHT + CONST_CHUNK_HEIGHT/2, 
-                    Math.sqrt(building.power) * powerBoost + CONST_CHUNK_DIMENSION_MAX, 
+                    sqrt(building.power) * powerBoost + CONST_CHUNK_DIMENSION_MAX, 
                     building.friendliness/2
                 );
             }
 
-            gl.uniform4fv(uPowerSources, powerSources);
-            gl.uniform1i(uPowerSourceCount, powerSourceCount);
+            gl.uniform4fv(uniformsAndAttributes[U_POWER_SOURCES], powerSources);
+            gl.uniform1i(uniformsAndAttributes[U_POWER_SOURCE_COUNT], powerSourceCount);
 
             gl.bindTexture(CONST_GL_TEXTURE_2D, sourceTexture);
-            gl.uniform1i(uPrevious, 0);
-            gl.uniform2f(uPreviousDimension, 1/canvasWidth, 1/canvasHeight);
-            gl.uniformMatrix4fv(uProjectionMatrix, false, projectionMatrix);
-            gl.uniformMatrix4fv(uViewMatrix, false, viewMatrix);
-            gl.uniformMatrix4fv(uPreviousViewMatrix, false, previousViewMatrix);
+            gl.uniform1i(uniformsAndAttributes[U_PREVIOUS], 0);
+            gl.uniform2f(uniformsAndAttributes[U_PREVIOUS_DIMENSION], 1/canvasWidth, 1/canvasHeight);
+            gl.uniformMatrix4fv(uniformsAndAttributes[U_PROJECTION_MATRIX], false, projectionMatrix);
+            gl.uniformMatrix4fv(uniformsAndAttributes[U_VIEW_MATRIX], false, viewMatrix);
+            gl.uniformMatrix4fv(uniformsAndAttributes[U_PREVIOUS_VIEW_MATRIX], false, previousViewMatrix);
 
             // work out lighting
-            let lightingAngle = Math.min(CONST_DIRTY_PI/2, world.cameraX/CONST_FINISH_X_DIV_PI_ON_2);
-            lightingSin = Math.sin(lightingAngle);
-            lightingCos = Math.cos(lightingAngle);
-            gl.uniform4f(uDirectedLightingNormal, lightingCos, 0, lightingSin, (lightingSin + 1) * CONST_DIRECTIONAL_LIGHT_INTENSITY_DIV_2);
+            let lightingAngle = min(CONST_DIRTY_PI/2, world.cameraX/CONST_FINISH_X_DIV_PI_ON_2);
+            lightingSin = sin(lightingAngle);
+            lightingCos = cos(lightingAngle);
+            gl.uniform4f(uniformsAndAttributes[U_DIRECTED_LIGHTING_NORMAL], lightingCos, 0, lightingSin, (lightingSin + 1) * CONST_DIRECTIONAL_LIGHT_INTENSITY_DIV_2);
 
 
             let cameraLightDistance = CONST_CAMERA_LIGHT_DISTANCE;
             let cameraLightIntensity = CONST_CAMERA_LIGHT_INTENSITY;
             if( FLAG_MUZZLE_FLASH ) {
-                let shotLightBonus = Math.max(0, lastShot + CONST_MUZZLE_FLASH_DURATION - world.age)/CONST_MUZZLE_FLASH_DURATION;
+                let shotLightBonus = max(0, lastShot + CONST_MUZZLE_FLASH_DURATION - world.age)/CONST_MUZZLE_FLASH_DURATION;
                 cameraLightIntensity += shotLightBonus;
                 // I don't think this will make much difference
                 //cameraLightDistance += shotLightBonus;
-			}
-			let wince = Math.max(
-                0, 
-				Math.min(1, (battery - CONST_BATTERY_WARNING)/CONST_BATTERY_WARNING)*CONST_MAX_SHIELD_INTENSITY, 
-				(1 - (world.age - lastHit - CONST_WINCE_DURATION)) * CONST_WINCE_INTENSITY / CONST_WINCE_DURATION
-			); 
-            gl.uniform4f(uCameraLight, cameraLightDistance, cameraLightIntensity, CONST_FOCUS - wince, CONST_BLOOM + wince);    
+            }
+            let wince: number;
+            if( FLAG_SHIELD_EFFECTS_FOCUS ) {
+                wince = max(
+                    0, 
+                    min(1, (battery - CONST_BATTERY_WARNING)/CONST_BATTERY_WARNING)*CONST_MAX_SHIELD_INTENSITY, 
+                    (1 - (world.age - player.lastDamageAge - CONST_WINCE_DURATION)) * CONST_WINCE_INTENSITY / CONST_WINCE_DURATION
+                );     
+            } else {
+                wince = max(
+                    0, 
+                    (1 - (world.age - player.lastDamageAge - CONST_WINCE_DURATION)) * CONST_WINCE_INTENSITY / CONST_WINCE_DURATION
+                );     
+            }
+            gl.uniform4f(uniformsAndAttributes[U_CAMERA_LIGHT], cameraLightDistance, cameraLightIntensity, CONST_FOCUS - wince, CONST_BLOOM + wince);    
     
             // draw all the entities
             for( let side in world.allEntities ) {
                 if( side as any != SIDE_BUILDING ) {
                     let entities = world.allEntities[side];
-                    for( let entity of entities ) {
+                    entities.map(function(entity) {
                         let surfaceOrMonster = entity as Surface | Monster;
                         if( !FLAG_GL_CULL_EXPLOSIONS ) {
                             gl.enable(CONST_GL_CULL_FACE);
@@ -871,14 +998,15 @@ function initShowPlay(
                         let directedLightingRange: Vector4;
                         let ambientLighting = CONST_AMBIENT_LIGHT_INTENSITY;
                         if( surfaceOrMonster.lastDamageAge && surfaceOrMonster.lastDamageAge + CONST_DAMAGE_FLASH_DURATION > world.age ) {
-                            ambientLighting += (1 - (surfaceOrMonster.lastDamageAge + CONST_DAMAGE_FLASH_DURATION - world.age)/CONST_DAMAGE_FLASH_DURATION)/2;
+                            ambientLighting += (surfaceOrMonster.lastDamageAge + CONST_DAMAGE_FLASH_DURATION - world.age)/CONST_DAMAGE_FLASH_DURATION_2;
                         }
     
 
-                        gl.uniform1i(uGridMode, entity.entityType);
+                        gl.uniform1i(uniformsAndAttributes[U_GRID_MODE], entity.entityType);
 
                         let offsetBuffer: WebGLBuffer;
                         let lineColor: Vector3;
+                        let modelMatrix: Matrix4;
                         if( entity.entityType ) {
                             let monster = entity as Monster; 
                             offsetBuffer = monster.offsetBuffer;
@@ -891,7 +1019,7 @@ function initShowPlay(
 
                             // attempt to find the surface this entity is above
                             directedLightingRange = [0, 0, 0, 0];
-                            let surfaces = world.getEntitiesAt(Math.floor(monster.x/CONST_CHUNK_WIDTH), Math.floor(monster.y/CONST_CHUNK_HEIGHT));
+                            let surfaces = world.getEntitiesAt(floor(monster.x/CONST_CHUNK_WIDTH), floor(monster.y/CONST_CHUNK_HEIGHT));
                             if( surfaces ) {
                                 let surface = surfaces[0] as Surface;
                                 if( !surface.entityType ) {
@@ -921,33 +1049,33 @@ function initShowPlay(
                                 // do one last animation
                                 cycle = monster.deathAge / monster.cycleLength + (monster.age - monster.deathAge)/CONST_DEATH_ANIMATION_TIME;
                             }
-                            gl.uniform1f(uCycleRadians, cycle * CONST_DIRTY_PI_2);
-                            gl.uniform1f(uOffsetMultiplier, offsetMultiplier);
+                            gl.uniform1f(uniformsAndAttributes[U_CYCLE_RADIANS], cycle * CONST_DIRTY_PI_2);
+                            gl.uniform1f(uniformsAndAttributes[U_OFFSET_MULTIPLIER], offsetMultiplier);
             
-                            let modelMatrix = matrix4MultiplyStack(matrixStack);
-                            gl.uniformMatrix4fv(uModelMatrix, false, modelMatrix);
+                            modelMatrix = matrix4MultiplyStack(matrixStack);
             
                         } else {
                             let surface = entity as Surface;
                             // doesn't get used, but put something in to prevent errors from disposed buffers
                             offsetBuffer = surface.gridCoordinateBuffer;
+                            modelMatrix = surface.pointsToWorld;
 
-                            gl.uniform3fv(uSurfaceNormal, surface.normal);
-                            gl.uniformMatrix4fv(uModelMatrix, false, surface.pointsToWorld);
-                            gl.uniform2f(uGridDimension, surface.surfaceWidth, surface.surfaceHeight);
-                            gl.uniform1fv(uGridLighting, surface.gridLighting);
+                            gl.uniform3fv(uniformsAndAttributes[U_SURFACE_NORMAL], surface.normal);
+                            gl.uniform2f(uniformsAndAttributes[U_GRID_DIMENSION], surface.surfaceWidth, surface.surfaceHeight);
+                            gl.uniform1fv(uniformsAndAttributes[U_GRID_LIGHTING], surface.gridLighting);
                             lineColor = CONST_INERT_GRID_COLOR_RGB;
                             directedLightingRange = surface.directedLightingRange;
                         }
                         webglBindAttributeBuffer(gl, offsetBuffer, aVertexOffset, 4); 
             
-                        gl.uniform3fv(uFillColor, fillColor);
-                        gl.uniform3fv(uLineColor, lineColor);
-                        gl.uniform4fv(uDirectedLightingRange, directedLightingRange);
-                        gl.uniform1f(uAmbientLight, ambientLighting);
+                        gl.uniformMatrix4fv(uniformsAndAttributes[U_MODEL_MATRIX], false, modelMatrix);
+                        gl.uniform3fv(uniformsAndAttributes[U_FILL_COLOR], fillColor);
+                        gl.uniform3fv(uniformsAndAttributes[U_LINE_COLOR], lineColor);
+                        gl.uniform4fv(uniformsAndAttributes[U_DIRECTED_LIGHTING_RANGE], directedLightingRange);
+                        gl.uniform1f(uniformsAndAttributes[U_AMBIENT_LIGHT], ambientLighting);
 
                         gl.drawElements(CONST_GL_TRIANGLES, surfaceOrMonster.indicesCount, FLAG_GL_16_BIT_INDEXES?CONST_GL_UNSIGNED_SHORT:CONST_GL_UNSIGNED_BYTE, 0);
-                    }
+                    });
                 }                    
             }
         }
@@ -957,7 +1085,7 @@ function initShowPlay(
             
             animationFrameHandle = requestAnimationFrame(_update);
 
-            let diff = Math.min(CONST_MAX_FRAME_DURATION, now - then);
+            let diff = min(CONST_MAX_FRAME_DURATION, now - then);
             then = now;
 
             world.updateWorld(diff);
@@ -969,30 +1097,30 @@ function initShowPlay(
 
             let deadness = 0;
             if( FLAG_DEATH_ANIMATION && player.deathAge ) {
-                deadness = Math.sin(Math.min(CONST_DIRTY_PI_DIV_2, (world.age - player.deathAge)/999));
+                deadness = sin(min(CONST_DIRTY_PI_ON_2, (world.age - player.deathAge)/999));
             }
 
             world.setCameraPosition(
                 player.x, 
                 player.y, 
                 player.z + player.radius + deadness * CONST_VISIBLE_DISTANCE/2, 
-                (player.rx + CONST_DIRTY_PI_DIV_2) * (1 - deadness), 
+                (player.rx + CONST_DIRTY_PI_ON_2) * (1 - deadness), 
                 player.ry, 
-                player.rz - CONST_DIRTY_PI_DIV_2
+                player.rz - CONST_DIRTY_PI_ON_2
             );
             let listener = audioContext.listener;
             listener.setPosition(player.x, player.y, player.z);       
-            listener.setOrientation(Math.cos(player.rz), Math.sin(player.rz), 0, 0, 0, 1);
+            listener.setOrientation(cos(player.rz), sin(player.rz), 0, 0, 0, 1);
                  
 
             // adjust for walk animation
             let walkTranslationMatrix: Matrix4;
             if( FLAG_SHAKY_CAMERA ) {
-                let screenShake = Math.max(0, (lastShot + 99 - world.age)/999);
+                let screenShake = max(0, (lastShot + 99 - world.age)/999);
                 walkTranslationMatrix = matrix4Translate(
-                    Math.sin(walkDistance)*player.radius/8 + (rng() - .5)*screenShake, 
+                    sin(walkDistance)*player.radius/8 + (rng() - .5)*screenShake, 
                     screenShake, 
-                    Math.abs(Math.cos(walkDistance)*player.radius/8) + (rng() - .5)*screenShake
+                    m.abs(cos(walkDistance)*player.radius/8) + (rng() - .5)*screenShake
                 );
             }
             let rotationMatrixX = matrix4Rotate(1, 0, 0, world.cameraRotationX);
@@ -1056,17 +1184,17 @@ function initShowPlay(
                 
                 let backgroundY = (screenPosition[1] * canvasHeight - canvasHeight)/2 | 0;
                 
-                let west = numberPositiveMod(world.cameraRotationZ - CONST_DIRTY_PI_DIV_2, CONST_DIRTY_PI_2);
-                // let east = (world.cameraRotationZ + Math.PI)%(Math.PI*2);
+                let west = numberPositiveMod(world.cameraRotationZ - CONST_DIRTY_PI_ON_2, CONST_DIRTY_PI_2);
+                // let east = (world.cameraRotationZ + PI)%(PI*2);
                 // if( east < 0 ) {
-                //     east += Math.PI*2;
+                //     east += PI*2;
                 // }
 
                 let circumference = CONST_DIRTY_PI_2/fovX * canvasWidth;
                 let skyballX = ((west * canvasWidth / fovX)) % circumference - circumference/2 + canvasWidth/2;
                 let backgroundX = (world.cameraRotationZ * canvasWidth/fovX) % canvasWidth - canvasWidth;
 
-                while( backgroundX < canvasWidth ) 
+                while( backgroundX < canvasWidth && player.x < CONST_FINISH_X ) 
                 {
                     context.drawImage(skybox, backgroundX, backgroundY);
                     backgroundX += canvasWidth;
@@ -1081,18 +1209,18 @@ function initShowPlay(
                     
                     let skyballY = (skyballPosition[1] * canvasHeight + canvasHeight)/2;
                     let skyGradient = context.createRadialGradient(skyballX, skyballY, canvasHeight/9, skyballX, skyballY, canvasHeight);
-                    let adj = 1 + Math.sin(world.age/999)/9;
-                    skyGradient.addColorStop(.1 * adj, '#000');
-                    skyGradient.addColorStop(.11 * adj, '#c6c');
-                    skyGradient.addColorStop(.5 * adj, CONST_SKY_COLOR_BALL_RGB);
-                    skyGradient.addColorStop(1, CONST_SKY_COLOR_HIGH_RGB);
+                    let adj = 1 + sin(world.age/999)/9;
+                    skyGradient.addColorStop(.1 * adj, sunColor);
+                    skyGradient.addColorStop(.11 * adj, sunCaladeraColor);
+                    skyGradient.addColorStop(1, skyColor);
                     context.fillStyle = skyGradient;
                 } else {
                     context.fillStyle = CONST_SKY_COLOR_HIGH_RGB;
                 }
+
                 context.fillRect(0, 0, canvasWidth, backgroundY + canvasHeight);
                 context.fillStyle = CONST_FOG_COLOR_RGB;
-                context.fillRect(0, Math.max(0, backgroundY + canvasHeight), canvasWidth, canvasHeight);
+                context.fillRect(0, max(0, backgroundY + canvasHeight), canvasWidth, canvasHeight);
                 
             } else {
                 context.fillStyle = CONST_FOG_COLOR_RGB;
@@ -1105,11 +1233,11 @@ function initShowPlay(
                 context.font = `12px sans-serif`;
                 context.fillStyle = '#f00';
                 frames ++;
-                context.fillText(`${Math.round((frames * 1000)/now)} (${Math.round(1000/diff)}) FPS`, 10, 30);    
+                context.fillText(`${m.round((frames * 1000)/now)} (${m.round(1000/diff)}) FPS`, 10, 30);    
             } 
 
             context.fillStyle = context.strokeStyle = '#fff';
-            context.globalAlpha = Math.abs(Math.sin(world.age/99))/2+.5;
+            context.globalAlpha = m.abs(sin(world.age/99))/2+.5;
             context.font = `${CONST_STATUS_HEIGHT}px sans-serif`;
             if( displayMessageTime && world.age - displayMessageTime < CONST_MESSAGE_TIME ) {
                 context.textAlign = 'center';
@@ -1142,9 +1270,9 @@ function initShowPlay(
                     }    
                 }
                 context.strokeRect(canvasWidth - maxBattery - CONST_STATUS_HEIGHT, CONST_STATUS_HEIGHT, maxBattery, CONST_STATUS_HEIGHT);
-                let powerSymbolWidth = context.measureText(CONST_BATTERY_SYMBOL).width;
+                let powerSymbolWidth = FLAG_MEASURE_TEXT?context.measureText(CONST_BATTERY_SYMBOL).width:(CONST_STATUS_HEIGHT*.9|0);
                 let p = lastPower;
-                let x = canvasWidth - maxBattery - CONST_STATUS_HEIGHT - 9;
+                let x = canvasWidth - maxBattery - (CONST_STATUS_HEIGHT + 9);
                 while( p > 0 ) {
                     x-= powerSymbolWidth;
                     context.fillText(CONST_BATTERY_SYMBOL, x, CONST_STATUS_HEIGHT);

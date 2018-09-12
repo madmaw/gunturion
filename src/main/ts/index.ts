@@ -1,41 +1,53 @@
-window.onload = function() {
-    // init everything
+///<reference path="flags.ts"/>
+///<reference path="constants.ts"/>
+///<reference path="math/Matrix.ts"/>
+///<reference path="math/Number.ts"/>
+///<reference path="math/Random.ts"/>
+///<reference path="math/Rect.ts"/>
+///<reference path="math/Vector.ts"/>
+///<reference path="sound/audio.ts"/>
+///<reference path="sound/linearRampGain.ts"/>
+///<reference path="sound/Sound3D.ts"/>
+///<reference path="sound/SoundLoop3D.ts"/>
+///<reference path="sound/webAudioBoomSound3DFactory.ts"/>
+///<reference path="sound/webAudioVibratoSound3DFactory.ts"/>
+///<reference path="sound/webAudioVibratoSoundLoop3DFactory.ts"/>
+///<reference path="sound/linearRampGain.ts"/>
+///<reference path="util/Array.ts"/>
+///<reference path="util/WebGL.ts"/>
+///<reference path="game/play/Entity.ts"/>
+///<reference path="game/play/ChunkGenerator.ts"/>
+///<reference path="game/play/initWorld.ts"/>
+///<reference path="game/play/initShowPlay.ts"/>
 
-	let loadingElement: HTMLElement;
-	if( !FLAG_NO_LOADING ) {
-		loadingElement = document.getElementById('l');
-	}
+let audioContext: AudioContext;
+if( FLAG_CHECK_WEBKIT_AUDIO_CONTEXT && window["webkitAudioContext"] ) {
+    audioContext = new window["webkitAudioContext"]();
+} else {
+    audioContext = new AudioContext();
+}
 
-    let audioContext = new AudioContext();
-
-    // set up the webgl context
-    let seed: number;
-    if( CONST_WORLD_SEED ) {
-        seed = CONST_WORLD_SEED;
-    } else {
-        seed = Math.floor(Math.random() * CONST_BIG_NUMBER);
-    }
-
-    let rngFactory = sinRandomNumberGeneratorFactory(seed);
-
-    let showPlay = initShowPlay(
-        seed,
-        rngFactory,
-        audioContext
-    );
-    if( FLAG_HOME_SCREEN ) {
+if( !FLAG_HOME_SCREEN ) {
+    initShowPlay(audioContext)();
+} else {
+    onload = function() {
+        // init everything
+    
+        let loadingElement: HTMLElement;
+        if( !FLAG_NO_LOADING ) {
+            loadingElement = d.getElementById('l');
+        }
+    
+        let showPlay = initShowPlay(
+            audioContext
+        );
         let showHome = initShowHome(showPlay);  
         showHome();
-    } else {
-        let f = function() {
-            showPlay(f);
-        }
-        f();
-    }
-
-    //initTest();
-    if( !FLAG_NO_LOADING ) {
-	    loadingElement.className = '';
-	}
     
-};
+        //initTest();
+        if( !FLAG_NO_LOADING ) {
+            loadingElement.className = '';
+        }
+        
+    };
+}

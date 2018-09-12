@@ -10,7 +10,7 @@ function webAudioBoomSoundFactory(
     var buffer = audioContext.createBuffer(1, frameCount, audioContext.sampleRate);
     var data = buffer.getChannelData(0);
     for (var i = 0; i < frameCount; i++) {
-        data[i] = Math.random() * 2 - 1;
+        data[i] = m.random() * 2 - 1;
     }
 
     return function (x: number, y: number, z: number) {
@@ -32,7 +32,9 @@ function webAudioBoomSoundFactory(
 
 		let panner = audioContext.createPanner();
 		panner.refDistance = CONST_MAX_SOUND_RADIUS_SQRT * attackVolume * 9;
-		panner.distanceModel = 'exponential';
+		if( FLAG_AUDIO_SET_DISTANCE_MODEL_EXPONENTIAL ) {
+			panner.distanceModel = 'exponential';
+		}
 		panner.setPosition(x, y, z);
 
 		staticNode.connect(filter);
@@ -43,11 +45,10 @@ function webAudioBoomSoundFactory(
 		staticNode.start();
 		staticNode.stop(audioContext.currentTime + durationSeconds);
 		staticNode.onended = function() {
-			panner.disconnect;
-			if( !FLAG_MINIMAL_AUDIO_CLEANUP ) {
-				gain.disconnect();
-				staticNode.disconnect();
-				filter.disconnect();
+			if( FLAG_MINIMAL_AUDIO_CLEANUP ) {
+				[panner].map(audioDisconnectSingleNode);
+			} else {
+				[panner, gain, staticNode, filter].map(audioDisconnectSingleNode);
 			}
 		}
     }

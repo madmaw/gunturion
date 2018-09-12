@@ -64,18 +64,23 @@ let matrix4Multiply = function(a: Matrix4, b: Matrix4, out?: Matrix4): Matrix4 {
 
 let matrix4MultiplyStack = function(matrices: Matrix4[]): Matrix4 {
     let current = matrix4Identity();
-    for( let matrix of matrices ) {
+    matrices.map(function(matrix: Matrix4) {
         if( matrix ) {
             current = matrix4Multiply(current, matrix);
         }
-    }
+    });
+    // for( let matrix of matrices ) {
+    //     if( matrix ) {
+    //         current = matrix4Multiply(current, matrix);
+    //     }
+    // }
     return current;
 }
 
-let matrix4Perspective = function(fovy: number, aspect: number, znear: number, zfar: number): Matrix4 {
+let matrix4Perspective = function(tanFovyDiv2: number, aspect: number, znear: number, zfar: number): Matrix4 {
 
     /*
-    var top = znear * Math.tan(fovy / 2);
+    var top = znear * tan(fovy / 2);
     var bottom = -top;
     var left = bottom * aspect;
     var right = top * aspect;
@@ -94,7 +99,7 @@ let matrix4Perspective = function(fovy: number, aspect: number, znear: number, z
         0, 0, D, 0
     ];
     */
-    let f = 1 / Math.tan(fovy / 2);
+    let f = 1 / tanFovyDiv2;
     let nf = 1 / (znear - zfar);
     return [
         f/aspect, 0, 0, 0, 
@@ -104,8 +109,8 @@ let matrix4Perspective = function(fovy: number, aspect: number, znear: number, z
     ];
 }
 
-let matrix4PerspectiveFlippedY = function(fovy: number, aspect: number, znear: number, zfar: number): Matrix4 {
-    let f = 1 / Math.tan(fovy / 2);
+let matrix4PerspectiveFlippedY = function(tanFovyDiv2: number, aspect: number, znear: number, zfar: number): Matrix4 {
+    let f = 1 / tanFovyDiv2;
     let nf = 1 / (znear - zfar);
     return [
         f/aspect, 0, 0, 0, 
@@ -116,33 +121,17 @@ let matrix4PerspectiveFlippedY = function(fovy: number, aspect: number, znear: n
 }
 
 function matrix4Rotate(x: number, y: number, z: number, rad: number): Matrix4 {
-    let s, c, t;
+    let s_, c_, t_;
 
-    s = Math.sin(rad);
-    c = Math.cos(rad);
-    t = 1 - c;
+    s_ = sin(rad);
+    c_ = cos(rad);
+    t_ = 1 - c_;
     return [
-        x * x * t + c, y * x * t - z * s, z * x * t - y * s, 0, 
-        x * y * t + z * s, y * y * t + c, z * y * t - x * s, 0,
+        x * x * t_ + c_, y * x * t_ - z * s_, z * x * t_ - y * s_, 0, 
+        x * y * t_ + z * s_, y * y * t_ + c_, z * y * t_ - x * s_, 0,
         // note b02 diffs from glMatrix (says it should be z * x * t - y * s)
         // also worth noting is that b12 should  be y * z * t - x * s according to some texts
-        x * z * t + y * s, y * z * t + x * s, z * z * t + c, 0,
-        0, 0, 0, 1
-    ];
-}
-
-function matrix4Rotate2(x: number, y: number, z: number, rad: number): Matrix4 {
-    let s, c, t;
-
-    s = Math.sin(rad);
-    c = Math.cos(rad);
-    t = 1 - c;
-    return [
-        x * x * t + c, y * x * t - z * s, z * x * t - y * s, 0, 
-        x * y * t + z * s, y * y * t + c, z * y * t - x * s, 0,
-        // note b02 diffs from glMatrix (says it should be z * x * t - y * s)
-        // also worth noting is that b12 should  be y * z * t - x * s according to some texts
-        x * z * t + y * s, y * z * t - x * s, z * z * t + c, 0,
+        x * z * t_ + y * s_, y * z * t_ + x * s_, z * z * t_ + c_, 0,
         0, 0, 0, 1
     ];
 }

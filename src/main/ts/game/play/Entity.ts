@@ -12,6 +12,14 @@ const MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT = 2;
 const MONSTER_BEHAVIOUR_FLAG_ROTATION_Z = 4;
 const MONSTER_BEHAVIOUR_FLAG_ROTATION_X = 8;
 
+const FLOOR_INDICES = [
+    // triangle 1
+    0, 1, 2,
+    // triangle 2
+    0, 2, 3
+];
+const FLOOR_INDICES_COUNT = 6;
+
 interface EntityBase {
     entityType: number;
     cleanup(): void;
@@ -20,7 +28,7 @@ interface EntityBase {
 
 interface Updatable {
     age: number;
-    onUpdate(world: World, diff: number): any;
+    onUpdate(world: World, diff: number): void;
 }
 
 interface Bounded {
@@ -50,7 +58,7 @@ interface Monster extends EntityBase, Updatable, Bounded, Rendered {
     rz: number;
     lineColor: Vector3;
     specialMatrix?: Matrix4;
-    lastDamageAge?: number;
+    lastDamageAge: number;
     deathAge?: number;
     birthday?: number,
     offsetBuffer: WebGLBuffer;
@@ -167,9 +175,9 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
         let lineX = width/lineScaleX;
         let lineY = height/lineScaleY;
         // assume we are always rotating only one axis by 90 degrees
-        let lineAspectRatio = rotateX?lineScaleX/lineScaleY:lineScaleY/lineScaleX;
+        let lineAspectRatio = lineScaleY/lineScaleX;//rotateY||rotateX?lineScaleX/lineScaleY:lineScaleY/lineScaleX;
         // assume the min is the one we're trying to match
-        let lineWidth = CONST_GRID_LINE_WIDTH / Math.min(lineScaleX, lineScaleY);
+        let lineWidth = CONST_GRID_LINE_WIDTH / lineScaleX;
         let gridCoordinates = [
             0, 0, lineAspectRatio, lineWidth,  
             lineX, 0, lineAspectRatio, lineWidth, 
@@ -178,13 +186,7 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
         ];
         let gridCoordinateBuffer = webglCreateArrayBuffer(gl, gridCoordinates);
 
-        let floorIndices = [
-            // triangle 1
-            0, 1, 2,
-            // triangle 2
-            0, 2, 3
-        ];
-        let floorIndicesBuffer = webglCreateElementArrayBuffer(gl, floorIndices);
+        let floorIndicesBuffer = webglCreateElementArrayBuffer(gl, FLOOR_INDICES);
 
         let worldToPointsRotationMatrix = matrix4Multiply(
             matrix4Rotate(1, 0, 0, rotateX), 
@@ -218,14 +220,14 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
         );
         let bounds: Rect3 = {
             minimum: [
-                Math.min(x + minRotatedDimensions[0], x + maxRotatedDimensions[0]), 
-                Math.min(y + minRotatedDimensions[1], y + maxRotatedDimensions[1]), 
-                Math.min(z + minRotatedDimensions[2], z + maxRotatedDimensions[2])
+                min(x + minRotatedDimensions[0], x + maxRotatedDimensions[0]), 
+                min(y + minRotatedDimensions[1], y + maxRotatedDimensions[1]), 
+                min(z + minRotatedDimensions[2], z + maxRotatedDimensions[2])
             ], 
             maximum: [
-                Math.max(x + minRotatedDimensions[0], x + maxRotatedDimensions[0]), 
-                Math.max(y + minRotatedDimensions[1], y + maxRotatedDimensions[1]), 
-                Math.max(z + minRotatedDimensions[2], z + maxRotatedDimensions[2])
+                max(x + minRotatedDimensions[0], x + maxRotatedDimensions[0]), 
+                max(y + minRotatedDimensions[1], y + maxRotatedDimensions[1]), 
+                max(z + minRotatedDimensions[2], z + maxRotatedDimensions[2])
             ]
         }
         let gridLighting = [0, 0, 0, 0];
@@ -244,7 +246,7 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
             gridCoordinateBuffer: gridCoordinateBuffer,
             gridLighting: gridLighting,
             indicesBuffer: floorIndicesBuffer,
-            indicesCount: floorIndices.length,
+            indicesCount: FLOOR_INDICES_COUNT,
             worldToPoints: worldToPointsMatrix, 
             pointsToWorld: pointsToWorldMatrix,
             worldToPointsRotation: worldToPointsRotationMatrix, 
@@ -296,9 +298,9 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
     ): Monster {
 
         function shift(bits: number): number {
-            let mask = Math.pow(2, bits) - 1;
-            let b = s & mask;
-            s>>=bits;
+            let mask = m.pow(2, bits) - 1;
+            let b = tmpSeed & mask;
+            tmpSeed>>=bits;
             if( FLAG_WARN_SHIFT_TOO_FAR ) {
                 shifts += bits;
                 if( shifts > 31 ) {
@@ -309,7 +311,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             return b;
         }   
 
-        let s = seed;
+        let tmpSeed = seed;
         let rng = rngFactory(seed);
 
         let shifts = 0;
@@ -317,7 +319,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
     
         let ringsBase = shift(3);
         let rings = fib(ringsBase)%11; // 1, 2, 3, 5, 8, 13(2), 21(10), 34(1)
-        let minPointCount = fib(shift(2)+1) + Math.max(1, ringsBase-1); // 2, 3, 5, 8 + rings
+        let minPointCount = fib(shift(2)+1) + max(1, ringsBase-1); // 2, 3, 5, 8 + rings
         let horizontalScale = (shift(1)+minPointCount)/(minPointCount+1);
         // TODO we don't have code for the other way 
         let equalRingOffset = shift(1);
@@ -333,7 +335,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
 
 
         let colorPattern = shift(3);
-        let ry = shift(1) * CONST_DIRTY_PI_DIV_2;     
+        let ry = shift(1) * CONST_DIRTY_PI_ON_2;     
         let high: number;
         let low: number;
         let lowVariance = .1;
@@ -362,7 +364,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             low = .4;
         }
         if( FLAG_BIGGER_IS_BRIGHTER ) {
-            low *= Math.min(2, radius/CONST_BASE_RADIUS);
+            low *= min(2, radius/CONST_BASE_RADIUS);
         }
         while( i-- ) {
             let colorPatternBit = colorPattern & 1;
@@ -378,7 +380,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
 
         
         // reset
-        s = seed;
+        tmpSeed = seed;
         if( FLAG_WARN_SHIFT_TOO_FAR ) {
             shifts = 0;
         }
@@ -389,7 +391,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         }
 
         // if the first bit is 0, we generate flying monsters, important for when the player is inaccessible
-        let gravityMultiplier = Math.min(1, shift(2)/2);
+        let gravityMultiplier = min(1, shift(2)/2);
         let restitution = shift(2)/4;
 
         // generate
@@ -415,7 +417,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         } else {
             ringDiv = rings;
             angleYOffset = CONST_DIRTY_PI/(ringDiv*2);
-            tipZ = Math.cos(angleYOffset) * radius;
+            tipZ = cos(angleYOffset) * radius;
         }
         let ringOffset = 0;
         let angleY = angleYOffset;
@@ -429,23 +431,23 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             let ringPointCount = ringPointCounts[ring];
             let ringAngleY = ringAngles[ring];
             let nextRingOffset = ringOffset + equalRingOffset;
-            let ringRadius = Math.sin(ringAngleY) * radius * horizontalScale/Math.cos(CONST_DIRTY_PI/ringPointCount);
-            let ringZ = Math.cos(ringAngleY) * radius;
+            let ringRadius = sin(ringAngleY) * radius * horizontalScale/cos(CONST_DIRTY_PI/ringPointCount);
+            let ringZ = cos(ringAngleY) * radius;
             
             for( let point = 0; point < ringPointCount; point ++ ) {
                 let cycleOffset = (point + ring) * cycleBase;
                 let nextCycleOffset = ((point+1)%ringPointCount + ring) * cycleBase;
-                let ringSpikiness = maxSpikiness*Math.sin(ringAngleY);
+                let ringSpikiness = maxSpikiness*sin(ringAngleY);
                 let spikiness = (pattern >> (point)%patternBits)&1?ringSpikiness:0;
                 let nextSpikiness = (pattern >> ((point+1)%ringPointCount)%patternBits)&1?ringSpikiness:0;
 
                 let angleZ = ringOffset * CONST_FAIRLY_ACCURATE_PI/ringPointCount + point * CONST_FAIRLY_ACCURATE_PI_2/ringPointCount;  
                 let nextAngleZ = angleZ + CONST_FAIRLY_ACCURATE_PI_2/ringPointCount;
                 let l = indices.length;
-                let rx = Math.cos(angleZ) * ringRadius;
-                let ry = Math.sin(angleZ) * ringRadius;
-                let nextRx = Math.cos(nextAngleZ) * ringRadius;
-                let nextRy = Math.sin(nextAngleZ) * ringRadius;
+                let rx = cos(angleZ) * ringRadius;
+                let ry = sin(angleZ) * ringRadius;
+                let nextRx = cos(nextAngleZ) * ringRadius;
+                let nextRy = sin(nextAngleZ) * ringRadius;
                 if( ring < rings - 1 ) {
                     let nextRingPointCount = ringPointCounts[ring+1];
 
@@ -453,18 +455,18 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                     
                     let nextRingCycleOffset = (point + ring + 1) * cycleBase;
                     let nextRingNextCycleOffset = ((point + 1)%nextRingPointCount + ring + 1) * cycleBase;
-                    let nextRingRingSpikiness = maxSpikiness * Math.sin(nextRingAngleY);
+                    let nextRingRingSpikiness = maxSpikiness * sin(nextRingAngleY);
                     let nextRingSpikiness = (pattern >> (point)%patternBits)&1?nextRingRingSpikiness:0;
                     let nextRingNextSpikiness = (pattern >> ((point + 1)%nextRingPointCount)%patternBits)&1?nextRingRingSpikiness:0;
     
-                    let nextRingRadius = Math.sin(nextRingAngleY) * radius * horizontalScale/Math.cos(CONST_DIRTY_PI/nextRingPointCount);
-                    let nextRingZ = Math.cos(nextRingAngleY) * radius;
+                    let nextRingRadius = sin(nextRingAngleY) * radius * horizontalScale/cos(CONST_DIRTY_PI/nextRingPointCount);
+                    let nextRingZ = cos(nextRingAngleY) * radius;
                     let nextRingAngleZ = nextRingOffset * CONST_FAIRLY_ACCURATE_PI / nextRingPointCount + point * CONST_FAIRLY_ACCURATE_PI_2/nextRingPointCount;
                     let nextRingNextAngleZ = nextRingAngleZ + CONST_FAIRLY_ACCURATE_PI_2 / nextRingPointCount;
-                    let nextRingRx = Math.cos(nextRingAngleZ)*nextRingRadius;
-                    let nextRingRy = Math.sin(nextRingAngleZ) * nextRingRadius;
-                    let nextRingNextRx = Math.cos(nextRingNextAngleZ)*nextRingRadius;
-                    let nextRingNextRy = Math.sin(nextRingNextAngleZ) * nextRingRadius;
+                    let nextRingRx = cos(nextRingAngleZ)*nextRingRadius;
+                    let nextRingRy = sin(nextRingAngleZ) * nextRingRadius;
+                    let nextRingNextRx = cos(nextRingNextAngleZ)*nextRingRadius;
+                    let nextRingNextRy = sin(nextRingNextAngleZ) * nextRingRadius;
 
 
                     let r1 = rng()+.5;
@@ -680,7 +682,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         }
         
         let behaviours: MonsterBehaviour[] = [];
-        let deathBehaviours: MonsterDeathBehaviour[] = [];
+        let deathBehaviour: MonsterDeathBehaviour;
         
         
         let lateralMovementFlags: number = MONSTER_BEHAVIOUR_FLAG_LATERAL_MOVEMENT;
@@ -697,13 +699,13 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             if( dx || dy ) {
                 let acc = diff * urgency?urgency*acceleration:acceleration;
 
-                let angle = Math.atan2(dy, dx);
-                let sin = Math.sin(angle);
-                let cos = Math.cos(angle);
+                let angle = atan2(dy, dx);
+                let psin = sin(angle);
+                let pcos = cos(angle);
 
                 let nangle = -angle;
-                let nsin = Math.sin(nangle);
-                let ncos = Math.cos(nangle);
+                let nsin = sin(nangle);
+                let ncos = cos(nangle);
 
                 // rotate existing velocity to match direction
                 let rvx = monster.vx * ncos - monster.vy * nsin;
@@ -720,8 +722,8 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                     // fly at it
                     rvx += acc;
                 }
-                monster.vx = rvx * cos - rvy * sin;
-                monster.vy = rvy * cos + rvx * sin;
+                monster.vx = rvx * pcos - rvy * psin;
+                monster.vy = rvy * pcos + rvx * psin;
             }
         }
         // else car-like movement (turns for angle)
@@ -729,8 +731,8 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         // seek player
         let seekCount = shift(2);
         while( seekCount-- ) {
-            //let speed = rng() * .005 + .0003 * (Math.random() + 1); //(shift(4)+1-Math.random()*.1)/2999
-            let speed = rng() * 5e-3 + 3e-4 * (Math.random() + 1); 
+            //let speed = rng() * .005 + .0003 * (random() + 1); //(shift(4)+1-random()*.1)/2999
+            let speed = rng() * 5e-3 + 3e-4 * (m.random() + 1); 
             let radius = rng(9) + CONST_MAX_BUILDING_ACTIVATION_DISTANCE;
             behaviours.push(
                 function(world: World, diff: number, takenFlags: number) {
@@ -747,7 +749,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         }
         // dodge bullets
         if( shift(1) ) {
-            let speed = rng() * .009 + .001;//(shift(4)+1-Math.random()*.1)/1999;
+            let speed = rng() * .01 + .001;//(shift(4)+1-random()*.1)/1999;
             let radius = rng(4)+3;
             let radiusSquared = radius * radius;
             behaviours.push(
@@ -774,14 +776,14 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
 
         // move aimlessly
         if( shift(1) ) {
-            //let speed = rng() * .005 + .0003;//(shift(4)+1-Math.random()*.1)/2999;
+            //let speed = rng() * .005 + .0003;//(shift(4)+1-random()*.1)/2999;
             let speed = rng() * 5e-3 + 3e-4;
             behaviours.push(function(world: World, diff: number, takenFlags: number) {
                 if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_LATERAL_MOVEMENT ) ) {
-                    if( Math.abs(monster.vx)<CONST_SMALL_NUMBER && Math.abs(monster.vy)<CONST_SMALL_NUMBER ) {
+                    if( m.abs(monster.vx)<CONST_SMALL_NUMBER && m.abs(monster.vy)<CONST_SMALL_NUMBER ) {
                         let a = rng() * CONST_DIRTY_PI_2;
-                        monster.vx = Math.cos(a) * speed;
-                        monster.vy = Math.sin(a) * speed;
+                        monster.vx = cos(a) * speed;
+                        monster.vy = sin(a) * speed;
                     }
                     lateralMover(monster.x + monster.vx * 999, monster.y + monster.vy * 999, speed, diff);
                     return lateralMovementFlags;
@@ -794,7 +796,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             behaviours.push(function(world: World, diff: number, takenFlags: number) {
                 if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT) ) {
                     // have we hit a floor?
-                    for( let entity of recentCollisions ) {
+                    recentCollisions.map(function(entity) {
                         if( !entity.entityType ) {
                             let surface = entity as Surface;
                             if( surface.normal[2] > CONST_SMALL_NUMBER ) {
@@ -802,7 +804,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                                 return MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT
                             }
                         }
-                    }
+                    });
                 }
             })
         }
@@ -829,7 +831,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                 behaviours.unshift(function(world: World, diff: number, takenFlags: number) {
                     if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_LATERAL_MOVEMENT ) ) {
                         // slow down to 0
-                        let fraction = Math.pow(deceleration, diff/999);
+                        let fraction = m.pow(deceleration, diff/999);
                         monster.vx *= fraction;
                         monster.vy *= fraction;
                         // do not rotate on the X or Z axis while sleeping
@@ -909,7 +911,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                         if( dz ) {
                             let timeToHere = monster.vz/accelerationPerSecond;
                             let distanceToHere = accelerationPerSecond*timeToHere*timeToHere/2;
-                            let totalDistance = Math.abs(dz) + distanceToHere;
+                            let totalDistance = m.abs(dz) + distanceToHere;
                             let pastHalfWay = distanceToHere > totalDistance/2;
                             let acc;
                             if( pastHalfWay && dz > 0 || !pastHalfWay && dz < 0 ) {
@@ -929,32 +931,33 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         
         
         // die and spawn something else
-        if( shift(3) == 1 && radius >= CONST_BASE_RADIUS ) {
+        if( shift(3) == 2 && radius > CONST_BASE_RADIUS ) {
             let quantity = (rng(2)+1) * radius;
             let spawnSeed: number;
             let spawnRadius: number;
             if( quantity & 1 ) {
                 spawnSeed = seed;
-                spawnRadius = radius * .7;
+                spawnRadius = radius/2;
             } else {
-                spawnSeed = seed >>> 6
+                spawnSeed = seed >> 6;
                 spawnRadius = radius;
             }
             quantity |= 1;
             // always do it when we die
-            deathBehaviours.push(function(world: World, source: Entity) {
+            deathBehaviour = function(world: World, source: Entity) {
                 let q = quantity;
                 while( q-- && source ) {
                     let angle = q * CONST_DIRTY_PI_2 / quantity;
                     let child = monsterGenerator(
                         spawnSeed, 
-                        monster.x + Math.cos(angle) * spawnRadius, monster.y + Math.sin(angle) * spawnRadius, monster.z, 
+                        monster.x + cos(angle) * spawnRadius, monster.y + sin(angle) * spawnRadius, monster.z, 
                         spawnRadius,
                         maxAge/2
                     );
+                    child.side = monster.side;
                     world.addEntity(child);    
                 }
-            });
+            };
         }
 
         
@@ -962,7 +965,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             // rotate to face direction of travel
             behaviours.push(function(world: World, diff: number, takenFlags: number) {
                 if( (monster.vx || monster.vy) &&!(takenFlags&MONSTER_BEHAVIOUR_FLAG_ROTATION_Z) ) {
-                    let angle = Math.atan2(monster.vy, monster.vx);
+                    let angle = atan2(monster.vy, monster.vx);
                     monster.rz = angle;
                     return MONSTER_BEHAVIOUR_FLAG_ROTATION_Z;
                 }
@@ -971,7 +974,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             if( shift(1) ) {
                 behaviours.push(function(world: World, diff: number, takenFlags: number) {
                     if( (monster.vx || monster.vy) &&!(takenFlags&MONSTER_BEHAVIOUR_FLAG_ROTATION_X) ) {
-                        let v = Math.sqrt(monster.vx*monster.vx + monster.vy*monster.vy);
+                        let v = sqrt(monster.vx*monster.vx + monster.vy*monster.vy);
                         monster.rx -= diff * v / monster.radius;
                         return MONSTER_BEHAVIOUR_FLAG_ROTATION_X;
                     }
@@ -982,7 +985,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             let rz = rng()*.01 + .001;//(shift(4)+1)/999;
             behaviours.push(function(world: World, diff: number, takenFlags: number) {
                 if(!(takenFlags&MONSTER_BEHAVIOUR_FLAG_ROTATION_Z)) {
-                    let v = Math.sqrt(monster.vx*monster.vx + monster.vy*monster.vy);
+                    let v = sqrt(monster.vx*monster.vx + monster.vy*monster.vy);
                     monster.rz += rz * diff * (v+CONST_SMALL_NUMBER);
                     return MONSTER_BEHAVIOUR_FLAG_ROTATION_Z;
                 }
@@ -991,7 +994,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
 
         if( !maxAge ) {
             //maxAge = rng(9999)+9999;
-            maxAge = rng(1e4)+1e4;
+            maxAge = rng(1e4) * radius+1e4;
         }
 
 
@@ -1000,22 +1003,22 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             //this.rx = -this.age / 10000;
             //this.y -= this.age / 1000000;
             let flag = 0;
-            for( let behaviour of behaviours ) {
+            behaviours.map(function(behaviour) {
                 let f = behaviour(world, diff, flag);
                 if( f ) {
                     flag |= f;
                 }
-            }
+            });
             if( !FLAG_TEST_PHYSICS ) {
                 if( pushCount ) {
                     // factor in pushes to make monsters spread out
                     if( pushX || pushY ) {
-                        let angle = Math.atan2(pushY, pushX);
+                        let angle = atan2(pushY, pushX);
                         pushX /= pushCount;
                         pushY /= pushCount;
                         let pushLenSquared = 1 - pushX * pushX - pushY * pushY;
-                        monster.vx += Math.cos(angle) * pushLenSquared / CONST_PUSH_DIVISOR;
-                        monster.vy += Math.sin(angle) * pushLenSquared / CONST_PUSH_DIVISOR;    
+                        monster.vx += cos(angle) * pushLenSquared / CONST_PUSH_DIVISOR;
+                        monster.vy += sin(angle) * pushLenSquared / CONST_PUSH_DIVISOR;    
                     }
                     pushCount = 0;
                     pushX = 0;
@@ -1040,9 +1043,9 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
 
         let soundLoop: SoundLoop3D;
         if( radius >= CONST_BASE_RADIUS ) {
-            soundLoop = soundLoopFactory(seed, cycleLength, radius * CONST_RADIUS_SOUND_VOLUME_RATIO);
+            soundLoop = soundLoopFactory(seed, cycleLength, sqrt(radius * CONST_RADIUS_SOUND_VOLUME_RATIO));
         }        
-        let health = (radius * radius * 4) | 0;
+        let health = (radius * radius * 2) | 0;
 
 		let bounds = function(): Rect3 {
 			return {
@@ -1102,7 +1105,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             die: function(this: Monster, world: World, deathSource: Entity) {
                 if( !monster.deathAge ) {
                     monster.deathAge = monster.age;
-                    for( let deathBehaviour of deathBehaviours ) {
+                    if( deathBehaviour ) {
                         deathBehaviour(world, deathSource);
                     }
                     if( onDie ) {
@@ -1117,19 +1120,19 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                         
                         while( r > max ) {
                             let a = r*CONST_DIRTY_PI_2/radius;
-                            let cos = Math.cos(a);
-                            let sin = Math.sin(a);
-                            let weapon = radius > CONST_BASE_RADIUS && r == radius;
+                            let cosAngle = cos(a);
+                            let sinAngle = sin(a);
+                            let weapon = maxAge<0 && r == radius;
                             let gem = monsterGenerator(
                                 weapon?seed:CONST_BATTERY_SEED, 
-                                monster.x + cos*CONST_SMALL_NUMBER, monster.y + sin*CONST_SMALL_NUMBER, monster.z, 
+                                monster.x + cosAngle*CONST_SMALL_NUMBER, monster.y + sinAngle*CONST_SMALL_NUMBER, monster.z, 
                                 weapon?.2:.05, 
                                 5e4, //5000
                                 null, 
                                 .001
                             );
-                            gem.vx = cos * CONST_GEM_VELOCITY;
-                            gem.vy = sin * CONST_GEM_VELOCITY;
+                            gem.vx = cosAngle * CONST_GEM_VELOCITY;
+                            gem.vy = sinAngle * CONST_GEM_VELOCITY;
 
                             gem.side = SIDE_POWERUPS;
                             gem.lineColor = CONST_FRIENDLY_BRIGHT_LINE_COLOR;
@@ -1148,6 +1151,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             vx: 0, 
             vy: 0, 
             vz: 0, 
+            lastDamageAge: 0,
             visible: 1, 
             gridCoordinateBuffer: barrycentricCoordinatesBuffer, 
             indicesBuffer: indicesBuffer, 

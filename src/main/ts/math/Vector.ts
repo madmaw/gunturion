@@ -32,7 +32,7 @@ function vector3DotProduct(v1: Vector3, v2: Vector3): number {
 }
 
 function vector3Length(v: Vector3): number {
-    return Math.sqrt(vector3DotProduct(v, v));
+    return sqrt(vector3DotProduct(v, v));
 }
 
 function vector3Mix(v1: Vector3, v2: Vector3, amt: number) {

@@ -20,31 +20,31 @@ function rect2Contains(r: Rect2, x: number, y: number): boolean {
 
 function rectOverlap(r1: Rect<number[]>, r2: Rect<number[]>, dimension: number, r1Div: number[]): Rect<number[]> {
     let ok = true;
-    let min = [];
-    let max = [];
+    let minimum: number[] = [];
+    let maximum: number[] = [];
     for( let i=0; i<dimension; i++ ) {
         let min1 = r1.minimum[i];
         let max1 = r1.maximum[i];
         let min2 = r2.minimum[i];
         let max2 = r2.maximum[i];
         if( r1Div ) {
-            min1 = Math.floor(min1/r1Div[i]);
-            max1 = Math.floor(max1/r1Div[i]);
+            min1 = floor(min1/r1Div[i]);
+            max1 = floor(max1/r1Div[i]);
         }
         
-        let minMax = Math.min(max1, max2);
-        let maxMin = Math.max(min1, min2);
+        let minMax = min(max1, max2);
+        let maxMin = max(min1, min2);
         let d = minMax - maxMin;
         ok = ok && d >= 0;
         if( ok ) {
-            min.push(maxMin);
-            max.push(minMax);
+            minimum.push(maxMin);
+            maximum.push(minMax);
         } 
     }
     if( ok ) {
         return {
-            minimum: min, 
-            maximum: max
+            minimum: minimum,
+            maximum: maximum
         }
     } 
     // return undefined;

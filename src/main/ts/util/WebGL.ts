@@ -49,3 +49,14 @@ function webglLoadShader(gl: WebGLRenderingContext, type: number, source: string
     }
     return shader;
 }
+
+function webglGetUniformAndAttributeLocations(gl: WebGLRenderingContext, program: WebGLProgram, uniformNames: string[], attributeNames: string[]): {[_:string]: WebGLUniformLocation} {
+    let result: {[_:string]: WebGLUniformLocation} = {};
+    for( let name of uniformNames ) {
+        result[name] = gl.getUniformLocation(program, name);
+    }
+    for( let name of attributeNames ) {
+        result[name] = gl.getAttribLocation(program, name);
+    }
+    return result;
+}

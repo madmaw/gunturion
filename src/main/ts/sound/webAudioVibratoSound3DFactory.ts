@@ -54,7 +54,9 @@ function webAudioVibratoSound3DFactory(
 
         let panner = audioContext.createPanner();
         panner.refDistance = CONST_MAX_SOUND_RADIUS_SQRT * attackVolume * 9;
-        panner.distanceModel = 'exponential';
+        if( FLAG_AUDIO_SET_DISTANCE_MODEL_EXPONENTIAL ) {
+            panner.distanceModel = 'exponential';
+        }
         //panner.rolloffFactor = 1;
 
         //gain.connect(vibratoGain);
@@ -66,18 +68,10 @@ function webAudioVibratoSound3DFactory(
         oscillator.start();    
 		oscillator.stop(now + durationSeconds);
 		oscillator.onended = function() {
-            panner.disconnect();
             if( !FLAG_MINIMAL_AUDIO_CLEANUP ) {
-                oscillator.disconnect();
-                gain.disconnect();
-                if( vibrato ) {
-                    vibrato.disconnect();
-                    vibratoGain.disconnect();
-                }
-                if( filter ) {
-                    filter.disconnect();
-                }
-
+                [oscillator, gain, vibrato, vibratoGain, filter].map(audioDisconnectSingleNode);
+            } else {
+                [panner].map(audioDisconnectSingleNode);
             }
 		}
 

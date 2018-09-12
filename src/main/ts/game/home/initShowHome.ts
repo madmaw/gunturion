@@ -3,8 +3,8 @@ interface ShowMenu {
 }
 
 function initShowHome(showGame: ShowPlay) {
-    let homeDiv = document.getElementById('h');
-    let playButton = document.getElementById('p');
+    let homeDiv = d.getElementById('h');
+    let playButton = d.getElementById('p');
 
     let destroy = function() {
         homeDiv.className = '';
