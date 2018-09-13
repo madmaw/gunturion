@@ -616,13 +616,14 @@ function initShowPlay(
                 .49
             );
             player = newPlayer;
-            player.gravityMultiplier = 1;
+            // cannot have zero gravity
+            player.gravityMultiplier=(player.gravityMultiplier+1)/2;
+            // bouncing is annoying
+            player.restitution = 0;
             player.sound = null;
             // end TODO
             //player.visible = 0;
             player.side = SIDE_PLAYER;
-            player.lineColor = CONST_FRIENDLY_BRIGHT_LINE_COLOR;
-            player.filledColor = CONST_FRIENDLY_BRIGHT_FILL_COLOR;
             player.die = function() {
                 player.deathAge = player.age;
                 if( player == newPlayer ) {
@@ -728,12 +729,13 @@ function initShowPlay(
                         } else {
                             lastShot = player.age;
                         }
+                        let bulletPosition = vector3TransformMatrix4(0, 0, 0, bulletPositionMatrix);
                         // shoot
                         let bullet = monsterGenerator(
                             player.seed, 
-                            player.x + player.radius*cosZSide*CONST_GUN_BARREL_OFFSET_Y + cosZ*(player.radius + CONST_BULLET_RADIUS), 
-                            player.y + player.radius*sinZSide*CONST_GUN_BARREL_OFFSET_Y + sinZ*(player.radius + CONST_BULLET_RADIUS), 
-                            player.z + player.radius + sinX * (player.radius + CONST_BULLET_RADIUS) - cosX * player.radius*CONST_GUN_BARREL_OFFSET_Z, 
+                            player.x + bulletPosition[0], 
+                            player.y + bulletPosition[1], 
+                            player.z + bulletPosition[2], 
                             CONST_BULLET_RADIUS, 
                             CONST_BULLET_LIFESPAN
                         );
@@ -741,7 +743,7 @@ function initShowPlay(
                         bullet.side = SIDE_NEUTRAL;
                         bullet.sound = null;
                         bullet.onCollision = function(world: World, withEntity: Entity) {
-                            if( !FLAG_TEST_PHYSICS && withEntity.side != SIDE_POWERUPS && !bullet.restitution ) {
+                            if( !FLAG_TEST_PHYSICS && withEntity.side != SIDE_POWERUPS && withEntity != player && (!bullet.restitution||withEntity.entityType) ) {
                                 bullet.die(world, withEntity);  
                             }
                             if( withEntity.entityType ) {
@@ -756,8 +758,6 @@ function initShowPlay(
                         bullet.vx = cosX * cosZ * CONST_BULLET_VELOCITY;
                         bullet.vy = cosX * sinZ * CONST_BULLET_VELOCITY;
                         bullet.vz = sinX * CONST_BULLET_VELOCITY;
-                        bullet.filledColor = CONST_FRIENDLY_BRIGHT_FILL_COLOR;
-                        bullet.lineColor = CONST_FRIENDLY_BRIGHT_LINE_COLOR;
                         bullet.gravityMultiplier /= 2;
     
                         world.addEntity(bullet);
@@ -854,6 +854,8 @@ function initShowPlay(
         }
         setPlayer(0, pos[0], pos[1], pos[2] + 2);
         player.ry = 0;
+        // initial player is stuck on the ground
+        player.gravityMultiplier = 1;
 
         
         
@@ -1103,6 +1105,10 @@ function initShowPlay(
             }
         }
 
+        let bulletPositionMatrix: Matrix4;
+        let gunPositionMatrix = matrix4Translate(player.radius*CONST_GUN_LENGTH_SCALE, -player.radius*CONST_GUN_BARREL_OFFSET_Y, -player.radius*CONST_GUN_BARREL_OFFSET_Z);
+        let headPositionMatrix = matrix4Translate(0, 0, player.radius);
+
         let previousViewMatrix = matrix4Identity();
         let _update = function(now: number) {
             
@@ -1148,19 +1154,34 @@ function initShowPlay(
                 );
             }
             let rotationMatrixX = matrix4Rotate(1, 0, 0, world.cameraRotationX);
+            let rotationMatrixZ = matrix4Rotate(0, 0, 1, world.cameraRotationZ);
+
+            // is this the same as the camera matrix?
+            let gunRotationXMatrix = matrix4Rotate(0, 1, 0, -player.rx);
+
+            bulletPositionMatrix = matrix4MultiplyStack([
+                headPositionMatrix, 
+                matrix4Rotate(0, 0, 1, -player.rz),
+                gunRotationXMatrix, 
+                gunPositionMatrix, 
+                // extend the rest of the gun length out, plus a bullet radius
+                // TODO don't recalculate every time
+                matrix4Translate(player.radius*CONST_GUN_LENGTH_SCALE/2 + CONST_BULLET_RADIUS/2, 0, 0)
+            ]);
 
             player.specialMatrix = matrix4MultiplyStack([
-                matrix4Translate(0, 0, player.radius), 
-                matrix4Rotate(0, 1, 0, -player.rx),
-                matrix4Translate(player.radius*CONST_GUN_LENGTH_SCALE, -player.radius*CONST_GUN_BARREL_OFFSET_Y, -player.radius*CONST_GUN_BARREL_OFFSET_Z), 
+                headPositionMatrix, 
+                gunRotationXMatrix,
+                gunPositionMatrix, 
+                // TODO don't recalculate every time
                 matrix4Scale(CONST_GUN_LENGTH_SCALE, CONST_GUN_LATERAL_SCALE, CONST_GUN_LATERAL_SCALE),
+                // TODO don't recalculate every time
                 matrix4Rotate(1, 0, 0, -CONST_DIRTY_PI/6),                 
                 matrix4Rotate(0, 1, 0, CONST_DIRTY_PI/2+player.rx), 
             ]);
     
             // camera is never rotated on the y axis
             //let rotationMatrixY = matrix4Rotate(0, 1, 0, world.cameraRotationY);
-            let rotationMatrixZ = matrix4Rotate(0, 0, 1, world.cameraRotationZ);
             let translationMatrix = matrix4Translate(-world.cameraX, -world.cameraY, -world.cameraZ);
             let viewMatrix = matrix4MultiplyStack([rotationMatrixX, /*rotationMatrixY,*/ walkTranslationMatrix, rotationMatrixZ, translationMatrix]);
             // sort the buildings so they are closest to the player

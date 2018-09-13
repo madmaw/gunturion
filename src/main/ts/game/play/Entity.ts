@@ -4,8 +4,8 @@ const SIDE_SCENERY = 0;
 const SIDE_PLAYER = 1;
 const SIDE_ENEMY = 2;
 const SIDE_NEUTRAL = 3;
-const SIDE_POWERUPS = 4;
-const SIDE_BUILDING = 5;
+const SIDE_BUILDING = 4;
+const SIDE_POWERUPS = 5;
 
 const MONSTER_BEHAVIOUR_FLAG_LATERAL_MOVEMENT = 1;
 const MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT = 2;
@@ -924,9 +924,9 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         // fly toward player height
         if( gravityMultiplier<1 && shift(3) ) {
             //let acceleration = rng() * .000001 + .000001; //(shift(4)+1)/9999;
-            let acceleration = rng() * 1e-7 + 1e-7;
+            let acceleration = rng() * 1e-6 + 1e-7;
             //let accelerationPerSecond = acceleration*999999; // 1000000
-            let accelerationPerSecond = acceleration*1e7;
+            let accelerationPerSecond = acceleration*1e6;
             behaviours.unshift(function(world: World, diff: number, takenFlags: number) {
                 if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT ) ) {
                     let target = world.getNearestEnemy(monster, 9);
@@ -955,28 +955,29 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         
         
         // die and spawn something else
-        if( shift(3) == 2 && radius > CONST_BASE_RADIUS ) {
-            let quantity = (rng(2)+1) * radius;
+        if( shift(3) == 2 ) {
+            let quantity: number;
             let spawnSeed: number;
             let spawnRadius: number;
-            if( quantity & 1 ) {
+            if( rng(2) ) {
+                spawnSeed = seed >> 6;
+                spawnRadius = radius*.9;
+                quantity = 1;
+            } else if( radius > CONST_BASE_RADIUS || maxAge /* if we've got a max age specified at this point, we're special*/ ) {
                 spawnSeed = seed;
                 spawnRadius = radius/2;
-            } else {
-                spawnSeed = seed >> 6;
-                spawnRadius = radius;
+                quantity = rng(2) * radius | 2;
             }
-            quantity |= 1;
             // always do it when we die
             deathBehaviour = function(world: World, source: Entity) {
                 let q = quantity;
+                let dr = radius - spawnRadius;
                 while( q-- && source ) {
                     let angle = q * CONST_DIRTY_PI_2 / quantity;
                     let child = monsterGenerator(
                         spawnSeed, 
-                        monster.x + cos(angle) * spawnRadius, monster.y + sin(angle) * spawnRadius, monster.z, 
-                        spawnRadius,
-                        maxAge/2
+                        monster.x + cos(angle) * dr, monster.y + sin(angle) * dr, monster.z, 
+                        spawnRadius
                     );
                     child.side = monster.side;
                     world.addEntity(child);    
@@ -1018,7 +1019,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
 
         if( !maxAge ) {
             //maxAge = rng(9999)+9999;
-            maxAge = rng(1e4) * radius+1e4;
+            maxAge = (rng(1e4)+2e4) * radius;
         }
 
 
@@ -1139,19 +1140,19 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                         // spawn some gems
                         let r = radius;
                         let max = rngFactory(monster.age)();
+                        let weapon: number | boolean = maxAge<0;
 
                         dieSound(monster.x, monster.y, monster.z);
                         
-                        while( r > max ) {
+                        while( r-- > max ) {
                             let a = r*CONST_DIRTY_PI_2/radius;
                             let cosAngle = cos(a);
                             let sinAngle = sin(a);
-                            let weapon = maxAge<0 && r == radius;
                             let gem = monsterGenerator(
                                 weapon?seed:CONST_BATTERY_SEED, 
                                 monster.x + cosAngle*CONST_SMALL_NUMBER, monster.y + sinAngle*CONST_SMALL_NUMBER, monster.z, 
                                 weapon?.2:.05, 
-                                5e4, //5000
+                                5e3, //5000
                                 null, 
                                 .001
                             );
@@ -1159,10 +1160,8 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                             gem.vy = sinAngle * CONST_GEM_VELOCITY;
 
                             gem.side = SIDE_POWERUPS;
-                            gem.lineColor = CONST_FRIENDLY_BRIGHT_LINE_COLOR;
-                            gem.filledColor = CONST_FRIENDLY_BRIGHT_FILL_COLOR;
                             world.addEntity(gem);
-                            r--;
+                            weapon = 0;
                         }
                     }
                 }

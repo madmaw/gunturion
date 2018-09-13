@@ -512,24 +512,21 @@ function flatChunkGeneratorFactory(
             entities.push.apply(entities, walls);
             entities.push(building);
 
-        } else if( chunkX < CONST_FINISH_X_CHUNK ) {
-            if( FLAG_SPAWN_RANDOM_MINIBOSSES && !liberated && !tileRng(9) && z ) {
-                
-                let monsterId = monsterSeedPalette[tileRng(monsterSeedPalette.length)];
-                let r = min(CONST_CHUNK_DIMENSION_MIN/3, CONST_BASE_RADIUS * (sqrt(chunkX) + 1));
-                let monster = monsterGenerator(
-                    monsterId, 
-                    //x + r + rng(chunkWidth - r*2), y + r + rng(chunkHeight - r*2), z + r * 2, 
-                    x + CONST_CHUNK_WIDTH/2, y + CONST_CHUNK_HEIGHT/2, z + r + CONST_MAX_WALL_DEPTH, 
-                    r, 
-                    -1, 
-                    // save the fact that we died
-                    function() {
-                        ls.setItem(tileKey, 'x');
-                    }
-                );                        
-                entities.push(monster);    
-            }
+        } else if( chunkX < CONST_FINISH_X_CHUNK && FLAG_SPAWN_RANDOM_MINIBOSSES && !liberated && z && !tileRng(9) ) {
+            let monsterId = monsterSeedPalette[tileRng(monsterSeedPalette.length)];
+            let r = min(CONST_CHUNK_DIMENSION_MIN/3, CONST_BASE_RADIUS * (sqrt(chunkX) + 1));
+            let monster = monsterGenerator(
+                monsterId, 
+                //x + r + rng(chunkWidth - r*2), y + r + rng(chunkHeight - r*2), z + r * 2, 
+                x + CONST_CHUNK_WIDTH/2, y + CONST_CHUNK_HEIGHT/2, z + r + CONST_MAX_WALL_DEPTH, 
+                r, 
+                -1, 
+                // save the fact that we died
+                function() {
+                    ls.setItem(tileKey, 'x');
+                }
+            );                        
+            entities.push(monster);    
         }
         return entities;
     }

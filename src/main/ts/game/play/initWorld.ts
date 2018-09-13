@@ -74,6 +74,13 @@ function initWorld(
     }
 
 	function addEntityPosition(entity: Monster | Surface): Rect2 {
+        // fix up the colours 
+        // TODO: don't do this here (do it when you add the entity, and fix up the player separately)
+        if( entity.side %2 && entity.entityType>0 ) {
+            (entity as Monster).lineColor = CONST_FRIENDLY_BRIGHT_LINE_COLOR;
+            (entity as Monster).filledColor = CONST_FRIENDLY_BRIGHT_FILL_COLOR;
+        }
+        
         return iterateTiles(entity.bounds(), function(entities: (Monster | Surface)[], tx: number, ty: number) {
             if( !entity.entityType && (entity as Surface).chunkX == tx && (entity as Surface).chunkY == ty && (entity as Surface).floor ) {
                 // floor tiles come first so we can get the reference grade
@@ -559,7 +566,8 @@ function initWorld(
 			return result;
 		},
 		getNearestEnemy:function(to: Monster, searchRadius?: number): Monster {
-			let targetSide = to.side%2 + 1;
+            
+			let targetSide = to.side==SIDE_NEUTRAL?SIDE_ENEMY:SIDE_PLAYER;
 			return world.getNearest(to.x, to.y, targetSide, searchRadius);
 		},	
 		getNearest: function(x: number, y: number, targetSide: number, searchRadius?: number): Monster {        
