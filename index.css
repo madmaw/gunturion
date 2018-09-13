@@ -1,23 +1,17 @@
-body {
-    border: 0;
+* {
     margin: 0;
-    border-spacing: 0;
-}   
-/*    
+    width: 100%;
+    height: 100%;
+}  
+/*
 .v {
     visibility: visible!important; 
 }
 #a {
 	visibility: hidden;
 }
-*/
 #b {
-    position: fixed;
-    width: 100%;
-    height: 100%;
-    /*visibility: hidden;*/
 }
-/*
 #p, body {
     font-size: 10vh;
 }

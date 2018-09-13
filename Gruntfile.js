@@ -93,6 +93,9 @@ module.exports = function (grunt) {
                 }, { // remove all whitespace
                     from: /(\n|\r)/g,
                     to: ""
+                }, { // remove comments from GLSL
+                    from: /\/\/[^\\n]*\\n/g,
+                    to: ""
                 }, { // remove whitespace from GLSL
                     from: /(\;|\{|\})( *\\n *)/g,
                     to: "$1"

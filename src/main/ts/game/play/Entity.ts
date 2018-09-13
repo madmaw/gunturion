@@ -65,7 +65,6 @@ interface Monster extends EntityBase, Updatable, Bounded, Rendered {
     onCollision(world: World, entity: Entity): void;
     die(world: World, deathSource?: Entity): void,
     restitution: number;
-    visible: number;
     cycleLength: number;
     gravityMultiplier: number;
     previousPosition?: Vector3;
@@ -75,7 +74,7 @@ interface Monster extends EntityBase, Updatable, Bounded, Rendered {
 }
 
 interface MonsterBehaviour {
-    (world: World, diff: number, takenFlags: number): any;
+    (world: World, diff: number, freeFlags: number): any;
 }
 
 interface MonsterDeathBehaviour {
@@ -295,7 +294,7 @@ function surfaceGeneratorFactory(gl: WebGLRenderingContext): SurfaceGenerator {
 function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNumberGeneratorFactory, audioContext: AudioContext): MonsterGenerator {
 
     let soundLoopFactory = webAudioVibratoSoundLoop3DFactory(audioContext, rngFactory);
-    let dieSound = webAudioBoomSoundFactory(audioContext, .7, .1, 777, .4, .3);
+    let dieSound = webAudioBoomSoundFactory(audioContext, .7, .1, 777, .7, .4);
 
 
     let nextId = 0;
@@ -759,8 +758,8 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             let speed = rng() * 5e-3 + 3e-4 * (m.random() + 1); 
             let radius = rng(9) + CONST_MAX_BUILDING_ACTIVATION_DISTANCE;
             behaviours.push(
-                function(world: World, diff: number, takenFlags: number) {
-                    if( !(takenFlags & lateralMovementFlags) ) {
+                function(world: World, diff: number, freeFlags: number) {
+                    if( freeFlags & lateralMovementFlags ) {
                         let enemy = world.getNearestEnemy(monster, radius + world.previousAggro);
                         if( enemy ) {
                             lateralMover(enemy.x, enemy.y, speed, diff);
@@ -777,8 +776,8 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             let radius = rng(4)+3;
             let radiusSquared = radius * radius;
             behaviours.push(
-                function(world: World, diff: number, takenFlags: number) {
-                    if( !(takenFlags & lateralMovementFlags) ) {
+                function(world: World, diff: number, freeFlags: number) {
+                    if( freeFlags & lateralMovementFlags ) {
                         let enemy = world.getNearest(monster.x, monster.y, SIDE_NEUTRAL, radius);
                         if( enemy ) {
                             let dx = enemy.x - monster.x;
@@ -802,8 +801,8 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         if( shift(1) ) {
             //let speed = rng() * .005 + .0003;//(shift(4)+1-random()*.1)/2999;
             let speed = rng() * 5e-3 + 3e-4;
-            behaviours.push(function(world: World, diff: number, takenFlags: number) {
-                if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_LATERAL_MOVEMENT ) ) {
+            behaviours.push(function(world: World, diff: number, freeFlags: number) {
+                if( freeFlags & MONSTER_BEHAVIOUR_FLAG_LATERAL_MOVEMENT ) {
                     if( m.abs(monster.vx)<CONST_SMALL_NUMBER && m.abs(monster.vy)<CONST_SMALL_NUMBER ) {
                         let a = rng() * CONST_DIRTY_PI_2;
                         monster.vx = cos(a) * speed;
@@ -817,8 +816,8 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         // jump
         if( FLAG_BEHAVIOUR_JUMP && !shift(2) ) {
             let impulse = rng() * .01 + .007;
-            behaviours.push(function(world: World, diff: number, takenFlags: number) {
-                if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT) ) {
+            behaviours.push(function(world: World, diff: number, freeFlags: number) {
+                if( freeFlags & MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT ) {
                     // have we hit a floor?
                     recentCollisions.map(function(entity) {
                         if( !entity.entityType ) {
@@ -852,8 +851,8 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             if( shift(2) == 1 ) {
                 // push to front, will always (probably) be a dependant behavior
                 let deceleration = rng()*.6 + .1;//(shift(2)+1)/5;
-                behaviours.unshift(function(world: World, diff: number, takenFlags: number) {
-                    if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_LATERAL_MOVEMENT ) ) {
+                behaviours.unshift(function(world: World, diff: number, freeFlags: number) {
+                    if( freeFlags & MONSTER_BEHAVIOUR_FLAG_LATERAL_MOVEMENT ) {
                         // slow down to 0
                         let fraction = m.pow(deceleration, diff/999);
                         monster.vx *= fraction;
@@ -867,9 +866,9 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             // if the world is not aggro'd
             if( shift(1) ) {
                 let oldBehaviour = behaviours.splice(0, 1)[0];
-                behaviours.push(function(world: World, diff: number, takenFlags: number) {
+                behaviours.push(function(world: World, diff: number, freeFlags: number) {
                     if( !world.previousAggro ) {
-                        return oldBehaviour(world, diff, takenFlags);
+                        return oldBehaviour(world, diff, freeFlags);
                     }
                 })
             }
@@ -880,11 +879,11 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                 let oldBehaviour = behaviours.splice(0, 1)[0];
                 let repeat = rng(2);
                 let interval = rng(4e3) + 999;//(shift(2)+3)*999;
-                behaviours.push(function(world: World, diff: number, takenFlags: number) {
+                behaviours.push(function(world: World, diff: number, freeFlags: number) {
                     let step = (monster.age/interval) | 0;
                     
                     if( step%2 && repeat || step ) {
-                        return oldBehaviour(world, diff, takenFlags);
+                        return oldBehaviour(world, diff, freeFlags);
                     }
                 })
             }
@@ -895,10 +894,10 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                 let proximity = rng(9)+3;//(shift(2)+1)*9;
                 let psq = proximity * proximity;
                 let oldBehaviour = behaviours.splice(0, 1)[0];
-                behaviours.push(function(world: World, diff: number, takenFlags: number) {
+                behaviours.push(function(world: World, diff: number, freeFlags: number) {
                     let enemy = world.getNearestEnemy(monster, proximity);
                     if( enemy ) {
-                        return oldBehaviour(world, diff, takenFlags);
+                        return oldBehaviour(world, diff, freeFlags);
                     }
                 });
                 
@@ -908,13 +907,13 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                 let oldBehaviour = behaviours.splice(0, 1)[0];
                 let above = shift(1);
                 let radius = rng(9)+3;
-                behaviours.push(function(world: World, diff: number, takenFlags: number) {
+                behaviours.push(function(world: World, diff: number, freeFlags: number) {
                     let enemy = world.getNearestEnemy(monster, radius); 
                     if( enemy ) {
                         let enemyz = enemy.z - enemy.radius;
                         let monsterz = monster.z - monster.radius;
                         if( monsterz >= enemyz - 1 && above || monsterz <= enemyz + 1 && !above ) {
-                            return oldBehaviour(world, diff, takenFlags);
+                            return oldBehaviour(world, diff, freeFlags);
                         }
                     }          
                 });
@@ -927,8 +926,8 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             let acceleration = rng() * 1e-6 + 1e-7;
             //let accelerationPerSecond = acceleration*999999; // 1000000
             let accelerationPerSecond = acceleration*1e6;
-            behaviours.unshift(function(world: World, diff: number, takenFlags: number) {
-                if( !(takenFlags & MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT ) ) {
+            behaviours.unshift(function(world: World, diff: number, freeFlags: number) {
+                if( freeFlags & MONSTER_BEHAVIOUR_FLAG_VERTICAL_MOVEMENT ) {
                     let target = world.getNearestEnemy(monster, 9);
                     if( target ) {
                         let dz = target.z - monster.z;
@@ -988,8 +987,8 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         
         if( shift(1) ) {
             // rotate to face direction of travel
-            behaviours.push(function(world: World, diff: number, takenFlags: number) {
-                if( (monster.vx || monster.vy) &&!(takenFlags&MONSTER_BEHAVIOUR_FLAG_ROTATION_Z) ) {
+            behaviours.push(function(world: World, diff: number, freeFlags: number) {
+                if( (monster.vx || monster.vy) && freeFlags&MONSTER_BEHAVIOUR_FLAG_ROTATION_Z ) {
                     let angle = atan2(monster.vy, monster.vx);
                     monster.rz = angle;
                     return MONSTER_BEHAVIOUR_FLAG_ROTATION_Z;
@@ -997,8 +996,8 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             });
             // rotate on X axis to match velocity
             if( shift(1) ) {
-                behaviours.push(function(world: World, diff: number, takenFlags: number) {
-                    if( (monster.vx || monster.vy) &&!(takenFlags&MONSTER_BEHAVIOUR_FLAG_ROTATION_X) ) {
+                behaviours.push(function(world: World, diff: number, freeFlags: number) {
+                    if( (monster.vx || monster.vy) && freeFlags&MONSTER_BEHAVIOUR_FLAG_ROTATION_X ) {
                         let v = sqrt(monster.vx*monster.vx + monster.vy*monster.vy);
                         monster.rx -= diff * v / monster.radius;
                         return MONSTER_BEHAVIOUR_FLAG_ROTATION_X;
@@ -1008,8 +1007,8 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
         } else {
             // rotate constantly on Z axis
             let rz = rng()*.01 + .001;//(shift(4)+1)/999;
-            behaviours.push(function(world: World, diff: number, takenFlags: number) {
-                if(!(takenFlags&MONSTER_BEHAVIOUR_FLAG_ROTATION_Z)) {
+            behaviours.push(function(world: World, diff: number, freeFlags: number) {
+                if(freeFlags&MONSTER_BEHAVIOUR_FLAG_ROTATION_Z) {
                     let v = sqrt(monster.vx*monster.vx + monster.vy*monster.vy);
                     monster.rz += rz * diff * (v+CONST_SMALL_NUMBER);
                     return MONSTER_BEHAVIOUR_FLAG_ROTATION_Z;
@@ -1017,6 +1016,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             })
         } 
 
+        let originalMaxAge = maxAge;
         if( !maxAge ) {
             //maxAge = rng(9999)+9999;
             maxAge = (rng(1e4)+2e4) * radius;
@@ -1027,11 +1027,11 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             //this.rz = this.age / 5000;
             //this.rx = -this.age / 10000;
             //this.y -= this.age / 1000000;
-            let flag = 0;
+            let flag = ~0;
             behaviours.map(function(behaviour) {
                 let f = behaviour(world, diff, flag);
                 if( f ) {
-                    flag |= f;
+                    flag &= ~f;
                 }
             });
             if( !FLAG_TEST_PHYSICS ) {
@@ -1055,7 +1055,8 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             let dz = monster.z - world.cameraZ;
             let dsq = dx * dx + dy * dy + dz * dz;
             // monsters die faster if they are a long way from the camera and the aggo is high
-            if( maxAge > 0 && monster.age > maxAge - (dsq * world.previousAggro)/9 ) {
+            // monsters that have an age specified are exempt
+            if( maxAge > 0 && monster.age > maxAge - (originalMaxAge?0:(dsq * world.previousAggro)/9) ) {
                 monster.die(world);
             }
             recentCollisions = [];
@@ -1142,7 +1143,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                         let max = rngFactory(monster.age)();
                         let weapon: number | boolean = maxAge<0;
 
-                        dieSound(monster.x, monster.y, monster.z);
+                        dieSound(monster.x, monster.y, monster.z, radius);
                         
                         while( r-- > max ) {
                             let a = r*CONST_DIRTY_PI_2/radius;
@@ -1175,7 +1176,6 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             vy: 0, 
             vz: 0, 
             lastDamageAge: 0,
-            visible: 1, 
             gridCoordinateBuffer: barrycentricCoordinatesBuffer, 
             indicesBuffer: indicesBuffer, 
             indicesCount: indices.length, 

@@ -233,9 +233,24 @@ function initWorld(
                                                             if( vector3DotProduct(d, dv) < 0 ) 
                                                             {
                                                                 // they're moving toward eachother on the plane
-                                                                let to = [0, 0, 1];
-                                                                let axis = vector3Normalize(vector3CrossProduct(to, d));
-                                                                let angle = m.acos(vector3DotProduct(to, d));
+                                                                let crossProduct: Vector3;
+                                                                let dotProduct: number;
+                                                                if( FLAG_INLINE_CROSS_PRODUCT ) {
+                                                                    // only place cross-product is used, inline it
+                                                                    // also it's a degenerate form, so it's easy
+                                                                    crossProduct = [
+                                                                        -d[1], 
+                                                                        d[0], 
+                                                                        0
+                                                                    ];
+                                                                    dotProduct = d[2];
+                                                                } else {
+                                                                    let to = [0, 0, 1];
+                                                                    crossProduct = vector3CrossProduct(to, d);
+                                                                    dotProduct = vector3DotProduct(to, d);
+                                                                }
+                                                                let axis = vector3Normalize(crossProduct);
+                                                                let angle = m.acos(dotProduct);
                                                                 let rotationMatrix = matrix4Rotate(axis[0], axis[1], axis[2], angle);
                                                                 //let rotationMatrix = matrix4Multiply(matrix4Rotate(0, axis[1], 0, angle), matrix4Rotate(axis[0], 0, 0, angle));
                                                                 let rotatedMonsterVelocity = vector3TransformMatrix4(monster.vx, monster.vy, monster.vz, rotationMatrix);
@@ -348,7 +363,7 @@ function initWorld(
         
                                                 if( planeIntersectionTime <= amtRemaining ) {
                                                     let relativeOrigin = vector3TransformMatrix4(originalX, originalY, originalZ, surface.worldToPoints);
-                                                    let planeIntersection = vectorMix(relativePosition, relativeOrigin, planeIntersectionTime/amtRemaining, 3);
+                                                    let planeIntersection = vectorNMix(relativePosition, relativeOrigin, planeIntersectionTime/amtRemaining);
         
                                                     if( velocityZ < 0 && vector2PolyContains(surface.points, planeIntersection[0], planeIntersection[1]) && planeIntersectionTime > 0 ) {
                                                         collisionTime = planeIntersectionTime - CONST_SMALL_NUMBER;

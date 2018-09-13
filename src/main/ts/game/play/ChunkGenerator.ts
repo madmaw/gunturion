@@ -43,7 +43,7 @@ function flatChunkGeneratorFactory(
         } else {
             floorHeight = (CONST_FINISH_X_CHUNK>>2) * wallDepth;
             if( chunkX > CONST_FINISH_X_CHUNK || tileRng() < .1) {
-                floorHeight += CONST_MAX_WALL_DEPTH * 0;
+                floorHeight += CONST_MAX_WALL_DEPTH * 2;
             }
         }
         return floorHeight;
@@ -53,7 +53,7 @@ function flatChunkGeneratorFactory(
 
         let x = chunkX * CONST_CHUNK_WIDTH;
         let y = chunkY * CONST_CHUNK_HEIGHT; 
-        let tileKey = ''+seed+" "+chunkX+" "+chunkY;
+        let tileKey = seed+" "+chunkX+" "+chunkY;
         let tileRng = rngFactory(chunkX*111 + chunkY * 37 + chunkX + chunkY);
 
         let monsterSeedPalette: number[] = [];
@@ -117,7 +117,7 @@ function flatChunkGeneratorFactory(
                 x + CONST_CHUNK_WIDTH, y + CONST_CHUNK_HEIGHT, eastZ, 
                 wallWidth, CONST_CHUNK_HEIGHT, 
                 chunkX, chunkY, 
-                -CONST_FAIRLY_ACCURATE_PI_DIV_2, CONST_FAIRLY_ACCURATE_PI,   
+                CONST_FAIRLY_ACCURATE_PI_3_DIV_2, CONST_FAIRLY_ACCURATE_PI,   
                 CONST_NEUTRAL_FILL_COLOR, 
                 wallWidth, 2,
                 directedLightingRange
@@ -130,7 +130,7 @@ function flatChunkGeneratorFactory(
                 x, y + CONST_CHUNK_HEIGHT, northZ, 
                 wallWidth, CONST_CHUNK_WIDTH,
                 chunkX, chunkY, 
-                -CONST_FAIRLY_ACCURATE_PI_DIV_2, -CONST_FAIRLY_ACCURATE_PI_DIV_2,  
+                CONST_FAIRLY_ACCURATE_PI_3_DIV_2, CONST_FAIRLY_ACCURATE_PI_3_DIV_2,  
                 CONST_NEUTRAL_FILL_COLOR, 
                 wallWidth, 2, 
                 directedLightingRange
@@ -143,7 +143,7 @@ function flatChunkGeneratorFactory(
                 x + CONST_CHUNK_WIDTH, y, southZ, 
                 wallWidth, CONST_CHUNK_HEIGHT, 
                 chunkX, chunkY, 
-                -CONST_FAIRLY_ACCURATE_PI_DIV_2, CONST_FAIRLY_ACCURATE_PI_DIV_2,
+                CONST_FAIRLY_ACCURATE_PI_3_DIV_2, CONST_FAIRLY_ACCURATE_PI_DIV_2,
                 CONST_NEUTRAL_FILL_COLOR, 
                 wallWidth, 2, 
                 directedLightingRange
@@ -151,7 +151,7 @@ function flatChunkGeneratorFactory(
             entities.push(wall);
         }
 
-        let building = chunkX > 0 && tileRng(2) && !stairs || buildingIsWall;
+        let building = chunkX > 0 && tileRng(2) && !stairs && (chunkX < CONST_FINISH_X_CHUNK || chunkX > CONST_FINISH_X_CHUNK + 2) || buildingIsWall;
         // let i = 9;
         // while( building && i ) {
         //     i--;
@@ -280,8 +280,9 @@ function flatChunkGeneratorFactory(
                         if( !liberated ) {
 							liberated = 1;
                             // save the fact we converted this building
-							ls.setItem(tileKey, 'x');
-                            ls.setItem(''+seed, '['+buildingCx+','+buildingCy+','+buildingZ+']');
+                            ls.setItem(tileKey, 1 as any);
+                            // hand rolled JSON string
+                            ls.setItem(seed as any, '['+buildingCx+','+buildingCy+','+buildingZ+']');
                             // turn off all the lights
                             walls.map(function(wall) {
                                 wall.gridLighting = [0, 0, 0, 0];                                
@@ -312,7 +313,7 @@ function flatChunkGeneratorFactory(
 
                 maxHealth += buildingWidth * buildingHeight * buildingDepth/CONST_BUILDING_VOLUME_HEALTH_RATIO;
 
-                let buildingWallWest = surfaceGenerator( 
+                buildingWallEast = surfaceGenerator( 
                     buildingX, buildingY, buildingZ, 
                     buildingDepth, buildingHeight, 
                     chunkX, chunkY, 
@@ -325,7 +326,7 @@ function flatChunkGeneratorFactory(
                     building
                 );
             
-                buildingWallEast = surfaceGenerator( 
+                let buildingWallWest = surfaceGenerator( 
                     buildingX + buildingWidth, buildingY + buildingHeight, buildingZ, 
                     buildingDepth, buildingHeight, 
                     chunkX, chunkY, 
@@ -355,7 +356,7 @@ function flatChunkGeneratorFactory(
                     buildingX, buildingY + buildingHeight, buildingZ, 
                     buildingDepth, buildingWidth, 
                     chunkX, chunkY, 
-                    CONST_FAIRLY_ACCURATE_PI_DIV_2, -CONST_FAIRLY_ACCURATE_PI_DIV_2, 
+                    CONST_FAIRLY_ACCURATE_PI_DIV_2, CONST_FAIRLY_ACCURATE_PI_3_DIV_2, 
                     fillColor, 
                     gridScale, gridScale, 
                     directedLightingRange, 
@@ -403,6 +404,7 @@ function flatChunkGeneratorFactory(
                 }
                 first = 0;
             }
+            maxHealth = sqrt(maxHealth)*5+9;
             let maxSpawnCount = maxHealth/(gridScale * gridScale) | 0;
             let incubationTime = 999;
             let spawnCount: number = 0;
@@ -416,7 +418,7 @@ function flatChunkGeneratorFactory(
             let spawns:{[_:number]:{[_:number]:Monster}} = {};
             let nextBirth: number = 0;            
             let damage = liberated?maxHealth:0;
-            let friendliness = damage/maxHealth;
+            let friendliness = buildingIsWall?-1:damage/maxHealth;
             building.friendliness = friendliness;
             building.power = damage * friendliness/CONST_BUILDING_DAMAGE_POWER_DIV;
             let previousDamage = damage;
@@ -444,7 +446,7 @@ function flatChunkGeneratorFactory(
 
             let spawn = function(now: number, aggro: number, target?: Monster): boolean {
                 // find a surface facing the player
-                let monsterRadius = CONST_BASE_RADIUS * gridScale;
+                let monsterRadius = CONST_BASE_RADIUS * sqrt(gridScale);
                 let successfulSpawning: boolean;
                 let attemptsRemaining = min(9, tileRng(9) + aggro/99 | 0);
                 while( !successfulSpawning && attemptsRemaining-- && spawnCount < maxSpawnCount ) {
@@ -514,7 +516,7 @@ function flatChunkGeneratorFactory(
 
         } else if( chunkX < CONST_FINISH_X_CHUNK && FLAG_SPAWN_RANDOM_MINIBOSSES && !liberated && z && !tileRng(9) ) {
             let monsterId = monsterSeedPalette[tileRng(monsterSeedPalette.length)];
-            let r = min(CONST_CHUNK_DIMENSION_MIN/3, CONST_BASE_RADIUS * (sqrt(chunkX) + 1));
+            let r = min(CONST_CHUNK_DIMENSION_MIN/4, CONST_BASE_RADIUS * (sqrt(chunkX) + 1));
             let monster = monsterGenerator(
                 monsterId, 
                 //x + r + rng(chunkWidth - r*2), y + r + rng(chunkHeight - r*2), z + r * 2, 
@@ -523,7 +525,7 @@ function flatChunkGeneratorFactory(
                 -1, 
                 // save the fact that we died
                 function() {
-                    ls.setItem(tileKey, 'x');
+                    ls.setItem(tileKey, 1 as any);
                 }
             );                        
             entities.push(monster);    

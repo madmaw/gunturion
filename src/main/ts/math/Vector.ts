@@ -35,10 +35,11 @@ function vector3Length(v: Vector3): number {
     return sqrt(vector3DotProduct(v, v));
 }
 
-function vectorMix(v1: Vector3, v2: Vector3, amt: number, size) {
+function vectorNMix(v1: Vector3, v2: Vector3, amt: number) {
     let result: number[] = [];
-    for( let i=0; i<size; i++ ) {        
-        result.push(v1[i] * amt + v2[i] * (1 - amt))
+    let i = v2.length;
+    while( i-- ) {
+        result[i] = v1[i] * amt + v2[i] * (1 - amt);
     }
     return result;
 }
@@ -109,4 +110,4 @@ function vector2PolyEdgeOverlapsCircle(poly: Vector2[], c: Vector2, r: number): 
 function vector2SquaredDistance(v: Vector2, w: Vector2) {
     var dx = v[0] - w[0], dy = v[1] - w[1];
     return dx * dx + dy * dy;
-  }
+}

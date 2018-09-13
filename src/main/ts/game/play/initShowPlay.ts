@@ -23,8 +23,8 @@ const V_VERTEX_POSITION = FLAG_SHORTEN_GLSL_VARIABLES?'s':'vVertexPosition_';
 const C_BLUR_ITERATIONS = FLAG_BLOOM?7:0;
 const C_MAX_POWER_SOURCES = 16;
 const C_GRID_LIGHT_MULTIPLIER = '.4';
-const C_LINE_WIDTH = '.2';
-const C_NEON_LIGHTING = '5.';
+const C_LINE_WIDTH = '2.';
+const C_NEON_LIGHTING = '6.';
 
 const L_RELATIVE_AND_ADJUSTED_VERTEX_POSITION = FLAG_SHORTEN_GLSL_VARIABLES?'t':'adjustedVertePosition_';
 const L_VERTEX_NORMAL = FLAG_SHORTEN_GLSL_VARIABLES?'u':'vertexNormal_';
@@ -64,7 +64,7 @@ void main(){
     ${V_RELATIVE_POSITION}=${L_RELATIVE_AND_ADJUSTED_VERTEX_POSITION};    
     ${V_SCREEN_COORDINATE}=${U_PROJECTION_MATRIX}*${U_PREVIOUS_VIEW_MATRIX}*${L_VERTEX_POSITION};
     ${V_NORMAL_LIGHTING}=vec4(mat3(${U_VIEW_MATRIX})*${L_VERTEX_NORMAL}-mat3(${U_VIEW_MATRIX})*vec3(0.),(dot(${L_VERTEX_NORMAL},${U_DIRECTED_LIGHTING_NORMAL}.xyz)+1.)*${U_DIRECTED_LIGHTING_NORMAL}.w);
-    ${V_VERTEX_POSITION}=${L_VERTEX_POSITION};
+    ${V_VERTEX_POSITION}=vec4(${L_VERTEX_POSITION}.xyz,${A_VERTEX_POSITION}.w);
     gl_Position=${U_PROJECTION_MATRIX}*${L_RELATIVE_AND_ADJUSTED_VERTEX_POSITION};
 }`;
 
@@ -101,7 +101,7 @@ const L_TILENESS = FLAG_SHORTEN_GLSL_VARIABLES?'V':'tileness_';
 const L_FILL_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'W':'fillColor_';
 const L_LINE_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'X':'lineColor_';
 const L_FWIDTH = FLAG_SHORTEN_GLSL_VARIABLES?'Y':'a3_';
-const L_FLOOR_GRID_COORDINATE = FLAG_SHORTEN_GLSL_VARIABLES?'Z':'floorGridCoordinate_';
+const L_FLOOR_GRID_COORDINATE_AND_PREVIOUS_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'Z':'floorGridCoordinate_';
 const L_LINE_DELTA_MIN_AND_BIT = FLAG_SHORTEN_GLSL_VARIABLES?'a':'mn_';
 const L_LINE_DELTA_MAX = FLAG_SHORTEN_GLSL_VARIABLES?'b':'mx_';
 const L_LINE_WIDTH = FLAG_SHORTEN_GLSL_VARIABLES?'c':'lineWidth_';
@@ -110,7 +110,7 @@ const L_CURRENT_COLOR = FLAG_SHORTEN_GLSL_VARIABLES?'e':'currentColor_';
 const L_TEXTURE_COORDINATE = FLAG_SHORTEN_GLSL_VARIABLES?'f':'textureCoordinate_';
 //const L_COUNT = FLAG_SHORTEN_GLSL_VARIABLES?'g':'count_';
 //const L_FOCUS = FLAG_SHORTEN_GLSL_VARIABLES?'h':'focus_';
-const L_PIXEL = FLAG_SHORTEN_GLSL_VARIABLES?'f':'pixel_';
+//const L_PIXEL = FLAG_SHORTEN_GLSL_VARIABLES?'f':'pixel_';
 const L_GRADIENT_POSITION = FLAG_SHORTEN_GLSL_VARIABLES?'g':'gradientPosition_';
 
 let fragmentShaderSource = 
@@ -139,10 +139,9 @@ vec4 ${F_GET_SAMPLE_COLOR}(vec2 ${FP_SCREEN_COORDINATE},int ${FP_DIV},inout floa
     if(${L_PREVIOUS_COLOR}.w>.1){
         float ${L_MULT}=${C_BLUR_ITERATIONS}./float(${C_BLUR_ITERATIONS}-${FP_DIV}); 
         ${FP_COUNT}+=${L_MULT};
-        return ${L_PREVIOUS_COLOR}*${L_MULT};
-    }else{
-        return vec4(0.);
+        ${L_PREVIOUS_COLOR}*=${L_MULT};
     }
+    return ${L_PREVIOUS_COLOR};
 }
 void main(){
     float ${L_DISTANCE_AND_FI}=length(${V_RELATIVE_POSITION}.xyz);
@@ -159,7 +158,7 @@ void main(){
             float ${L_POWER_SOURCE_DISTANCE}=sqrt(${L_POWER_SOURCE_DELTA}.x*${L_POWER_SOURCE_DELTA}.x+${L_POWER_SOURCE_DELTA}.y*${L_POWER_SOURCE_DELTA}.y);
             if(${L_POWER_SOURCE_DISTANCE}<${L_POWER_SOURCE}.z){
                 float ${L_POWER}=(${L_POWER_SOURCE}.z-${L_POWER_SOURCE_DISTANCE})/${L_POWER_SOURCE}.z;
-                float ${L_POWER_SQUARED}=${L_POWER}*${L_POWER}*${L_POWER_SOURCE}.z/${CONST_BASE_BUILDING_POWER}.;
+                float ${L_POWER_SQUARED}=${L_POWER}*${L_POWER}*sqrt(${L_POWER_SOURCE}.z)/${CONST_BASE_BUILDING_POWER}.;
                 ${L_GRID_POWER_AND_COUNT_AND_FOCUS}+=${L_POWER_SQUARED};
                 ${L_GRID_COLOR}+=vec3(.5,${L_POWER_SOURCE}.w,.5-${L_POWER_SOURCE}.w)*${L_POWER_SQUARED};
             }
@@ -168,26 +167,26 @@ void main(){
     if(${L_GRID_POWER_AND_COUNT_AND_FOCUS}>0.){
         ${L_GRID_COLOR}/=${L_GRID_POWER_AND_COUNT_AND_FOCUS};
     }
-    float ${L_LIGHTING}=clamp(1.-${L_DISTANCE_AND_FI}/${U_CAMERA_LIGHT}.x,0.,1.)*-dot(${V_RELATIVE_POSITION}.xyz/${L_DISTANCE_AND_FI},${V_NORMAL_LIGHTING}.xyz)*${U_CAMERA_LIGHT}.y+${U_AMBIENT_LIGHT}+${V_NORMAL_LIGHTING}.w;
+    float ${L_LIGHTING}=clamp(1.-${L_DISTANCE_AND_FI}/${U_CAMERA_LIGHT}.x,0.,1.)*-dot(${V_RELATIVE_POSITION}.xyz/${L_DISTANCE_AND_FI},${V_NORMAL_LIGHTING}.xyz)*${U_CAMERA_LIGHT}.y+${U_AMBIENT_LIGHT}+${V_NORMAL_LIGHTING}.w+${L_GRID_POWER_AND_COUNT_AND_FOCUS}/9.;
     float ${L_TILENESS}=1.;
     vec3 ${L_FILL_COLOR};
     vec3 ${L_LINE_COLOR};
+    vec4 ${L_FLOOR_GRID_COORDINATE_AND_PREVIOUS_COLOR}=floor(${V_GRID_COORDINATE});
     if(${U_GRID_MODE}>0){
-        vec3 ${L_FWIDTH}=smoothstep(vec3(0.0),fwidth(${V_GRID_COORDINATE}.xyz)*max(1.,${C_LINE_WIDTH}*(1.-${L_DISTANCE_AND_FI}/${CONST_VISIBLE_DISTANCE}.)),${V_GRID_COORDINATE}.xyz);
+        vec3 ${L_FWIDTH}=smoothstep(vec3(0.0),fwidth(${V_GRID_COORDINATE}.xyz)*${C_LINE_WIDTH}*${V_VERTEX_POSITION}.w*(1.-${L_DISTANCE_AND_FI}/${CONST_VISIBLE_DISTANCE}.),${V_GRID_COORDINATE}.xyz);
         ${L_TILENESS}=min(min(${L_FWIDTH}.x,${L_FWIDTH}.y),${L_FWIDTH}.z);
         ${L_FILL_COLOR}=${U_FILL_COLOR}.xyz;
         ${L_LINE_COLOR}=${U_LINE_COLOR};
         ${L_LIGHTING}+=${U_FILL_COLOR}.w;
     }else{ 
-        vec4 ${L_FLOOR_GRID_COORDINATE}=floor(${V_GRID_COORDINATE});
-        float ${L_LINE_DELTA_MIN_AND_BIT}=min(${V_GRID_COORDINATE}.x-${L_FLOOR_GRID_COORDINATE}.x,(${V_GRID_COORDINATE}.y-${L_FLOOR_GRID_COORDINATE}.y)*${V_GRID_COORDINATE}.z);
-        float ${L_LINE_DELTA_MAX}=max(${V_GRID_COORDINATE}.x-${L_FLOOR_GRID_COORDINATE}.x,1.-(1.-${V_GRID_COORDINATE}.y+${L_FLOOR_GRID_COORDINATE}.y)*${V_GRID_COORDINATE}.z);
+        float ${L_LINE_DELTA_MIN_AND_BIT}=min(${V_GRID_COORDINATE}.x-${L_FLOOR_GRID_COORDINATE_AND_PREVIOUS_COLOR}.x,(${V_GRID_COORDINATE}.y-${L_FLOOR_GRID_COORDINATE_AND_PREVIOUS_COLOR}.y)*${V_GRID_COORDINATE}.z);
+        float ${L_LINE_DELTA_MAX}=max(${V_GRID_COORDINATE}.x-${L_FLOOR_GRID_COORDINATE_AND_PREVIOUS_COLOR}.x,1.-(1.-${V_GRID_COORDINATE}.y+${L_FLOOR_GRID_COORDINATE_AND_PREVIOUS_COLOR}.y)*${V_GRID_COORDINATE}.z);
         float ${L_LINE_WIDTH}=(1.+${L_GRID_POWER_AND_COUNT_AND_FOCUS}*${L_GRID_POWER_AND_COUNT_AND_FOCUS})*${V_GRID_COORDINATE}.w; 
         if(${L_LINE_DELTA_MIN_AND_BIT}<${L_LINE_WIDTH}||${L_LINE_DELTA_MAX}>(1.-${L_LINE_WIDTH})){
             ${L_TILENESS}=min(${L_LINE_DELTA_MIN_AND_BIT},1.-${L_LINE_DELTA_MAX})/${L_LINE_WIDTH}*(1.-max(0.,${L_DISTANCE_AND_FI}/${CONST_VISIBLE_DISTANCE}.))*(1.-${L_LINE_WIDTH})+${L_LINE_WIDTH};
             ${L_TILENESS}*=${L_TILENESS}*${L_TILENESS};
         }
-        ${L_LINE_DELTA_MIN_AND_BIT} = ${L_FLOOR_GRID_COORDINATE}.y*${U_GRID_DIMENSION}.x+${L_FLOOR_GRID_COORDINATE}.x;
+        ${L_LINE_DELTA_MIN_AND_BIT} = ${L_FLOOR_GRID_COORDINATE_AND_PREVIOUS_COLOR}.y*${U_GRID_DIMENSION}.x+${L_FLOOR_GRID_COORDINATE_AND_PREVIOUS_COLOR}.x;
         for(int i=0;i<4;i++){
             if(${L_LINE_DELTA_MIN_AND_BIT}<${CONST_GL_SAFE_BITS}.&&${L_LINE_DELTA_MIN_AND_BIT}>=0.) {
                 ${L_LIGHTING}=max(${L_LIGHTING},mod(floor(${U_GRID_LIGHTING}[i]/pow(2.,${L_LINE_DELTA_MIN_AND_BIT})), 2.)*${C_NEON_LIGHTING});
@@ -199,26 +198,27 @@ void main(){
         vec2 ${L_GRADIENT_POSITION}=${V_GRID_COORDINATE}.xy/${U_GRID_DIMENSION}.xy-.5;
         ${L_FILL_COLOR}=vec3(${U_FILL_COLOR}.xy, ${U_FILL_COLOR}.z+${U_FILL_COLOR}.w*(${L_GRADIENT_POSITION}.x+${L_GRADIENT_POSITION}.y));
         if(${U_GRID_DIMENSION}.z>0.){
-            vec4 ${L_PIXEL}=texture2D(${U_GRID_TEXTURE},1.-${V_GRID_COORDINATE}.yx/${U_GRID_DIMENSION}.yx);
-            ${L_LIGHTING}+=${L_PIXEL}.w*${C_NEON_LIGHTING}*${U_GRID_DIMENSION}.z;
-            ${L_TILENESS}=max(${L_TILENESS},${L_PIXEL}.w*${U_GRID_DIMENSION}.z);
+            // reuse local var for the pixel texture for the surface
+            ${L_FLOOR_GRID_COORDINATE_AND_PREVIOUS_COLOR}=texture2D(${U_GRID_TEXTURE},1.-${V_GRID_COORDINATE}.yx/${U_GRID_DIMENSION}.yx);
+            ${L_LIGHTING}+=${L_FLOOR_GRID_COORDINATE_AND_PREVIOUS_COLOR}.w*${C_NEON_LIGHTING}*${U_GRID_DIMENSION}.z;
+            ${L_TILENESS}=max(${L_TILENESS},${L_FLOOR_GRID_COORDINATE_AND_PREVIOUS_COLOR}.w*${U_GRID_DIMENSION}.z);
         }
     }
     vec4 ${L_CURRENT_COLOR}=vec4(mix(${L_LINE_COLOR},max(mix(vec3(0.),${L_FILL_COLOR},${L_LIGHTING}),${L_GRID_COLOR}*${C_GRID_LIGHT_MULTIPLIER}*(1.-min((${V_VERTEX_POSITION}.z-(${V_VERTEX_POSITION}.x-${U_DIRECTED_LIGHTING_RANGE}.x)*${U_DIRECTED_LIGHTING_RANGE}.y-${U_DIRECTED_LIGHTING_RANGE}.z)/${U_DIRECTED_LIGHTING_RANGE}.w,1.))),${L_TILENESS}), ${L_FOGGINESS});
     vec2 ${L_TEXTURE_COORDINATE}=(${V_SCREEN_COORDINATE}.xy/${V_SCREEN_COORDINATE}.w)/2.+.5;
     ${L_GRID_POWER_AND_COUNT_AND_FOCUS}=0.;
-    vec4 ${L_PREVIOUS_COLOR}=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE},0,${L_GRID_POWER_AND_COUNT_AND_FOCUS});
+    ${L_FLOOR_GRID_COORDINATE_AND_PREVIOUS_COLOR}=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE},0,${L_GRID_POWER_AND_COUNT_AND_FOCUS});
     for(int i=1;i<${C_BLUR_ITERATIONS};++i){
         ${L_DISTANCE_AND_FI}=float(i);
-        ${L_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}+vec2(${U_PREVIOUS_DIMENSION}.x,0.)*${L_DISTANCE_AND_FI},i,${L_GRID_POWER_AND_COUNT_AND_FOCUS});
-        ${L_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}-vec2(${U_PREVIOUS_DIMENSION}.x,0.)*${L_DISTANCE_AND_FI},i,${L_GRID_POWER_AND_COUNT_AND_FOCUS});
-        ${L_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}+vec2(0.,${U_PREVIOUS_DIMENSION}.y)*${L_DISTANCE_AND_FI},i,${L_GRID_POWER_AND_COUNT_AND_FOCUS});
-        ${L_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}-vec2(0.,${U_PREVIOUS_DIMENSION}.y)*${L_DISTANCE_AND_FI},i,${L_GRID_POWER_AND_COUNT_AND_FOCUS});
+        ${L_FLOOR_GRID_COORDINATE_AND_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}+vec2(${U_PREVIOUS_DIMENSION}.x,0.)*${L_DISTANCE_AND_FI},i,${L_GRID_POWER_AND_COUNT_AND_FOCUS});
+        ${L_FLOOR_GRID_COORDINATE_AND_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}-vec2(${U_PREVIOUS_DIMENSION}.x,0.)*${L_DISTANCE_AND_FI},i,${L_GRID_POWER_AND_COUNT_AND_FOCUS});
+        ${L_FLOOR_GRID_COORDINATE_AND_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}+vec2(0.,${U_PREVIOUS_DIMENSION}.y)*${L_DISTANCE_AND_FI},i,${L_GRID_POWER_AND_COUNT_AND_FOCUS});
+        ${L_FLOOR_GRID_COORDINATE_AND_PREVIOUS_COLOR}+=${F_GET_SAMPLE_COLOR}(${L_TEXTURE_COORDINATE}-vec2(0.,${U_PREVIOUS_DIMENSION}.y)*${L_DISTANCE_AND_FI},i,${L_GRID_POWER_AND_COUNT_AND_FOCUS});
     }
     if(${L_GRID_POWER_AND_COUNT_AND_FOCUS}>0.){
-        ${L_PREVIOUS_COLOR}/=${L_GRID_POWER_AND_COUNT_AND_FOCUS};
-        ${L_GRID_POWER_AND_COUNT_AND_FOCUS}=sqrt(${L_PREVIOUS_COLOR}.w)*${U_CAMERA_LIGHT}.z;
-        ${L_CURRENT_COLOR}=vec4((${L_CURRENT_COLOR}.xyz*${L_GRID_POWER_AND_COUNT_AND_FOCUS}+${L_PREVIOUS_COLOR}.xyz*(1.-${L_GRID_POWER_AND_COUNT_AND_FOCUS}))*${U_CAMERA_LIGHT}.w,${L_CURRENT_COLOR}.a);
+        ${L_FLOOR_GRID_COORDINATE_AND_PREVIOUS_COLOR}/=${L_GRID_POWER_AND_COUNT_AND_FOCUS};
+        ${L_GRID_POWER_AND_COUNT_AND_FOCUS}=sqrt(${L_FLOOR_GRID_COORDINATE_AND_PREVIOUS_COLOR}.w)*${U_CAMERA_LIGHT}.z;
+        ${L_CURRENT_COLOR}=vec4((${L_CURRENT_COLOR}.xyz*${L_GRID_POWER_AND_COUNT_AND_FOCUS}+${L_FLOOR_GRID_COORDINATE_AND_PREVIOUS_COLOR}.xyz*(1.-${L_GRID_POWER_AND_COUNT_AND_FOCUS}))*${U_CAMERA_LIGHT}.w,${L_CURRENT_COLOR}.a);
     }
     gl_FragColor=${L_CURRENT_COLOR};
 }`;
@@ -292,7 +292,6 @@ function initShowPlay(
     let deathSound = webAudioBoomSoundFactory(audioContext, 2, .2, 499, 1.5, 1);
 	let painSound = webAudioVibratoSound3DFactory(audioContext, .5, 0, .4, .2, 'sawtooth', 299, -99);
     let stepSound = webAudioBoomSoundFactory(audioContext, .05, .01, 2e3, .1, .05);
-    let victory: number;
     let sunColor = '#000';
     let sunCaladeraColor = '#c6c';
     let skyColor = CONST_SKY_COLOR_HIGH_RGB;
@@ -453,6 +452,7 @@ function initShowPlay(
     
     
     let play = function(onRestart?: () => void) {
+        let victory: number;
         let seed: number;
         if( FLAG_PERSISTENT_SEED ) {
             seed = ls.getItem(0 as any) as any/1;        
@@ -507,13 +507,25 @@ function initShowPlay(
             aspectRatio = canvasWidth/canvasHeight;
             fovX = 2 * m.atan(CONST_TAN_FOV_Y_DIV_2 * aspectRatio);
             if( FLAG_BLOOM ) {
-                projectionMatrix = matrix4PerspectiveFlippedY(
-                    CONST_TAN_FOV_Y_DIV_2, 
-                    aspectRatio, 
-                    CONST_BASE_RADIUS/2, 
-                    CONST_VISIBLE_DISTANCE
-                );    
+                if( FLAG_INLINE_PROJECTION_MATRIX ) {
+                    let f = 1 / CONST_TAN_FOV_Y_DIV_2;
+                    let nf = 1 / (CONST_BASE_RADIUS/2 - CONST_VISIBLE_DISTANCE);
+                    projectionMatrix = [
+                        f/aspectRatio, 0, 0, 0, 
+                        0, -f, 0, 0,
+                        0, 0, (CONST_VISIBLE_DISTANCE + CONST_BASE_RADIUS/2) * nf, -1, 
+                        0, 0, (2 * CONST_VISIBLE_DISTANCE * CONST_BASE_RADIUS/2) * nf, 0
+                    ];
+                } else {
+                    projectionMatrix = matrix4PerspectiveFlippedY(
+                        CONST_TAN_FOV_Y_DIV_2, 
+                        aspectRatio, 
+                        CONST_BASE_RADIUS/2, 
+                        CONST_VISIBLE_DISTANCE
+                    );        
+                }
             } else {
+                // TODO respect inline here too
                 projectionMatrix = matrix4Perspective(
                     CONST_TAN_FOV_Y_DIV_2, 
                     aspectRatio, 
@@ -584,6 +596,7 @@ function initShowPlay(
             pos = JSON.parse(posString);
         } else {
             pos = [0, 0, 0];
+            //pos = [CONST_FINISH_X + 12, 0, 99];
         }
         
         let say = function(message: string, pronunciation?: string) {
@@ -609,20 +622,18 @@ function initShowPlay(
         let walkDistance = 0;
 
         let player: Monster;
-        let setPlayer = function(seed: number, x: number, y: number, z: number) {
+        let setPlayer = function(playerEntitySeed: number, x: number, y: number, z: number) {
             let newPlayer = monsterGenerator(
-                seed,
+                playerEntitySeed,
                 x, y, z, 
                 .49
             );
             player = newPlayer;
-            // cannot have zero gravity
-            player.gravityMultiplier=(player.gravityMultiplier+1)/2;
+            // swap the gravity (guns that shoot low or zero gravity bullets, allow you to jump higher)
+            player.gravityMultiplier=(1 - player.gravityMultiplier/2);
             // bouncing is annoying
             player.restitution = 0;
             player.sound = null;
-            // end TODO
-            //player.visible = 0;
             player.side = SIDE_PLAYER;
             player.die = function() {
                 player.deathAge = player.age;
@@ -682,7 +693,7 @@ function initShowPlay(
                     player.vz = .015;
                     lastFloor = 0;
                 }
-                player.vx = vx;
+                player.vx = vx; 
                 player.vy = vy;
     
                 // work out our gun power
@@ -712,12 +723,12 @@ function initShowPlay(
                         if ( dsq < building.power * building.power ) {
                             let d = sqrt(dsq);
                             let p = building.friendliness*(building.power - d)/building.power;
-                            power += p*p*building.power/CONST_BASE_BUILDING_POWER;
+                            power += p*p*sqrt(building.power)/CONST_BASE_BUILDING_POWER;
                         }
                     }
                 }
                 lastPower = sqrt(power);
-                battery = min(maxBattery, battery + lastPower*amt/(battery*99/maxBattery+49));
+                battery = min(maxBattery, battery + lastPower*amt*.01/min(1, (battery + 9)/CONST_BATTERY_WARNING));
                 if( shooting && battery >= CONST_BASE_BULLET_COST ) {
                     let shotInterval = CONST_BASE_BULLET_INTERVAL;
                     if( player.age > lastShot + shotInterval || battery >= maxBattery ) {
@@ -766,8 +777,8 @@ function initShowPlay(
                 if(!victory && player.x > CONST_FINISH_X) {
                     victory = 1;
                     say("YOU ESCAPED");
-                    // reset the seed for the net game
-                    ls.setItem(0 as any, rng(CONST_BIG_NUMBER) as any);
+                    // increment the seed for the next game
+                    ls.setItem(0 as any, seed+1 as any);
                     sunColor = '#FF5';
                     sunCaladeraColor = '#CCC';
                     skyColor = '#99E';
@@ -803,9 +814,9 @@ function initShowPlay(
                         if( other.side == SIDE_POWERUPS ) {
                             let powerup = other as Monster;
                             if( powerup.seed == CONST_BATTERY_SEED ) {
-                                batteryLevel ++;
+                                batteryLevel++;
                                 maxBattery = m.pow(batteryLevel, CONST_BATTERY_LEVEL_EXPONENT);
-                                battery += CONST_BASE_BULLET_COST;
+                                battery += 9;
                                 lastBatteryBoost = world.age;
                                 powerupSound(player.x, player.y, player.z);    
                             } else {
@@ -828,9 +839,10 @@ function initShowPlay(
                                     otherMonster.deathAge = otherMonster.age;
                                 } else {
                                     painSound(player.x, player.y, player.z);
-                                    if( battery >= CONST_BATTERY_WARNING ) {
+                                    let damage = CONST_BATTERY_WARNING / CONST_BASE_RADIUS * otherMonster.radius;
+                                    if( battery >= damage ) {
                                         // kill the monster, survive
-                                        battery -= CONST_BATTERY_WARNING;
+                                        battery -= damage;
                                         player.lastDamageAge = world.age;
                                         lastShot = world.age + CONST_WINCE_DURATION;
                                         otherMonster.deathAge = otherMonster.age;
@@ -854,8 +866,6 @@ function initShowPlay(
         }
         setPlayer(0, pos[0], pos[1], pos[2] + 2);
         player.ry = 0;
-        // initial player is stuck on the ground
-        player.gravityMultiplier = 1;
 
         
         
@@ -911,7 +921,7 @@ function initShowPlay(
             if( d.pointerLockElement == inputCanvas ) {
                 
                 dx -= e.movementX;
-                dy = min(canvasHeight/2, max(-canvasHeight/2, dy - e.movementY));    
+                dy = min(canvasHeight/2, max(-canvasHeight/2, dy - e.movementY/2));    
             }
         }
         onkeydown = function(e: KeyboardEvent) {
@@ -1066,8 +1076,8 @@ function initShowPlay(
                                 // explode away from the camera
                                 //matrixStack.splice(1, 0, matrix4Scale(1 - b * sinZ, 1 - b * cosZ, 1 - b));
                                 matrixStack.splice(1, 0, matrix4Scale(scale, scale, scale));
-                                lineColor = vectorMix(CONST_FOG_COLOR_VECTOR, lineColor, bsq, 3);
-                                fillColor = vectorMix(CONST_FOG_COLOR_VECTOR, fillColor, bsq, 4);
+                                lineColor = vectorNMix(CONST_FOG_COLOR_VECTOR, lineColor, bsq);
+                                fillColor = vectorNMix(CONST_FOG_COLOR_VECTOR, fillColor, bsq);
                                 // do one last animation
                                 cycle = monster.deathAge / monster.cycleLength + (monster.age - monster.deathAge)/CONST_DEATH_ANIMATION_TIME;
                             }
@@ -1109,7 +1119,12 @@ function initShowPlay(
         let gunPositionMatrix = matrix4Translate(player.radius*CONST_GUN_LENGTH_SCALE, -player.radius*CONST_GUN_BARREL_OFFSET_Y, -player.radius*CONST_GUN_BARREL_OFFSET_Z);
         let headPositionMatrix = matrix4Translate(0, 0, player.radius);
 
-        let previousViewMatrix = matrix4Identity();
+        let previousViewMatrix: Matrix4;
+        if( FLAG_INLINE_IDENTITY_MATRIX ) {
+            previousViewMatrix = MATRIX4_IDENTITY;
+        } else {
+            previousViewMatrix = matrix4Identity();
+        }
         let _update = function(now: number) {
             
             animationFrameHandle = requestAnimationFrame(_update);
@@ -1146,7 +1161,7 @@ function initShowPlay(
             // adjust for walk animation
             let walkTranslationMatrix: Matrix4;
             if( FLAG_SHAKY_CAMERA ) {
-                let screenShake = max(0, (lastShot + 99 - world.age)/999);
+                let screenShake = max(0, (lastShot + 99 - world.age)/3e3);
                 walkTranslationMatrix = matrix4Translate(
                     sin(walkDistance)*player.radius/8 + (rng() - .5)*screenShake, 
                     screenShake, 
@@ -1156,7 +1171,6 @@ function initShowPlay(
             let rotationMatrixX = matrix4Rotate(1, 0, 0, world.cameraRotationX);
             let rotationMatrixZ = matrix4Rotate(0, 0, 1, world.cameraRotationZ);
 
-            // is this the same as the camera matrix?
             let gunRotationXMatrix = matrix4Rotate(0, 1, 0, -player.rx);
 
             bulletPositionMatrix = matrix4MultiplyStack([
@@ -1229,13 +1243,13 @@ function initShowPlay(
                 
                 let backgroundY = (screenPosition[1] * canvasHeight - canvasHeight)/2 | 0;
                 
-                let west = numberPositiveMod(world.cameraRotationZ - CONST_DIRTY_PI_ON_2, CONST_DIRTY_PI_2);
+                let west = numberPositiveMod(world.cameraRotationZ - CONST_DIRTY_PI_ON_2, CONST_FAIRLY_ACCURATE_PI_2);
                 // let east = (world.cameraRotationZ + PI)%(PI*2);
                 // if( east < 0 ) {
                 //     east += PI*2;
                 // }
 
-                let circumference = CONST_DIRTY_PI_2/fovX * canvasWidth;
+                let circumference = CONST_FAIRLY_ACCURATE_PI_2/fovX * canvasWidth;
                 let skyballX = ((west * canvasWidth / fovX)) % circumference - circumference/2 + canvasWidth/2;
                 let backgroundX = (world.cameraRotationZ * canvasWidth/fovX) % canvasWidth - canvasWidth;
 
@@ -1284,13 +1298,24 @@ function initShowPlay(
             context.fillStyle = context.strokeStyle = '#fff';
             context.globalAlpha = m.abs(sin(world.age/99))/2+.5;
             context.font = CONST_STATUS_FONT;
+            context.textAlign = 'center';
             if( displayMessageTime && world.age - displayMessageTime < CONST_MESSAGE_TIME ) {
-                context.textAlign = 'center';
                 context.fillText(displayMessage, canvasWidth/2, canvasHeight/2);
             }
-            context.textAlign = 'left';
+            if( FLAG_MEASURE_TEXT ) {
+                context.textAlign = 'left';
+            } 
             if( !player.deathAge ) {
                 let fillStyle;                
+                if( FLAG_FLASH_BATTERY_BOOST_FLASH_BAR ) {
+                    let batteryBoost = lastBatteryBoost - world.age + CONST_BATTERY_BOOST_ANIMATION_DURATION;
+                    let p = min(1, 1 - batteryBoost/CONST_BATTERY_BOOST_ANIMATION_DURATION);
+                    if( battery > CONST_BASE_BULLET_COST ) {
+                        context.globalAlpha = p;
+                    }
+                    context.lineWidth = 9 - p*7;    
+                }
+
                 if( battery < CONST_BATTERY_WARNING ) {
                     fillStyle = 'red';
                 }  else {
@@ -1299,25 +1324,13 @@ function initShowPlay(
                 context.fillStyle = fillStyle;
                 if( battery < CONST_BASE_BULLET_COST ) {
                     context.strokeStyle = 'red';
-                } else {
-                    context.globalAlpha = 1;
                 }
                 // show battery
                 context.fillRect(canvasWidth - maxBattery - CONST_STATUS_HEIGHT, CONST_STATUS_HEIGHT, battery, CONST_STATUS_HEIGHT);
-                if( FLAG_FLASH_BATTERY_BOOST_FLASH_BAR ) {
-                    let batteryBoost = lastBatteryBoost - world.age + CONST_BATTERY_BOOST_ANIMATION_DURATION;
-                    if( batteryBoost > 0 ) {
-                        let p = batteryBoost/CONST_BATTERY_BOOST_ANIMATION_DURATION;
-                        context.globalAlpha = p;
-                        context.lineWidth = (1-p) * 9 + 1;
-                    } else {
-                        context.lineWidth = 2;
-                    }    
-                }
                 context.strokeRect(canvasWidth - maxBattery - CONST_STATUS_HEIGHT, CONST_STATUS_HEIGHT, maxBattery, CONST_STATUS_HEIGHT);
                 let powerSymbolWidth = FLAG_MEASURE_TEXT?context.measureText(CONST_BATTERY_SYMBOL).width:(CONST_STATUS_HEIGHT*.9|0);
                 let p = lastPower;
-                let x = canvasWidth - maxBattery - (CONST_STATUS_HEIGHT + 9);
+                let x = canvasWidth - maxBattery - (CONST_STATUS_HEIGHT+9);
                 while( p > 0 ) {
                     x-= powerSymbolWidth;
                     context.fillText(CONST_BATTERY_SYMBOL, x, CONST_STATUS_HEIGHT);

@@ -1,5 +1,12 @@
 type Matrix4 = number[];
 
+const MATRIX4_IDENTITY: Matrix4 = [
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1
+];    
+
 let matrix4Identity = function(): Matrix4 {
     return [
         1, 0, 0, 0,
@@ -45,10 +52,8 @@ let matrix4Invert = function(a: Matrix4): Matrix4 {
 
 }
 
-let matrix4Multiply = function(a: Matrix4, b: Matrix4, out?: Matrix4): Matrix4 {
-    if (!out) {
-        out = matrix4Identity();
-    }
+let matrix4Multiply = function(a: Matrix4, b: Matrix4): Matrix4 {
+    let out: Matrix4 = [];
 
     for( let x=0; x<16; x++ ) {
         let i = x >> 2;
@@ -63,7 +68,12 @@ let matrix4Multiply = function(a: Matrix4, b: Matrix4, out?: Matrix4): Matrix4 {
 }
 
 let matrix4MultiplyStack = function(matrices: Matrix4[]): Matrix4 {
-    let current = matrix4Identity();
+    let current: Matrix4;
+    if( FLAG_INLINE_IDENTITY_MATRIX ) {
+        current = MATRIX4_IDENTITY;
+    } else {
+        current = matrix4Identity();
+    }
     matrices.map(function(matrix: Matrix4) {
         if( matrix ) {
             current = matrix4Multiply(current, matrix);

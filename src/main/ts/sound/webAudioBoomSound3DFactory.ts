@@ -6,15 +6,20 @@ function webAudioBoomSoundFactory(
     attackVolume: number, 
     sustainVolume: number
 ): Sound3D {
-    var frameCount = durationSeconds * audioContext.sampleRate;
-    var buffer = audioContext.createBuffer(1, frameCount, audioContext.sampleRate);
-    var data = buffer.getChannelData(0);
-    for (var i = 0; i < frameCount; i++) {
-        data[i] = m.random() * 2 - 1;
+	let sampleRate = audioContext.sampleRate;
+    var frameCount = durationSeconds * sampleRate | 0;
+    var buffer = audioContext.createBuffer(1, frameCount, sampleRate);
+	var data = buffer.getChannelData(0);
+	
+    while (frameCount--) {
+        data[frameCount] = m.random() * 2 - 1;
     }
 
-    return function (x: number, y: number, z: number) {
+    return function (x: number, y: number, z: number, volume: number) {
 		// set up the frequency
+		if( !volume) {
+			volume = 1;
+		}
 
 		var staticNode = audioContext.createBufferSource();
 		staticNode.buffer = buffer;
@@ -28,7 +33,7 @@ function webAudioBoomSoundFactory(
 		//decay
 		var gain = audioContext.createGain();
 		var decay = durationSeconds * .2;
-		linearRampGain(gain, audioContext.currentTime, attackVolume, sustainVolume, attackSeconds, decay, null, durationSeconds);
+		linearRampGain(gain, audioContext.currentTime, attackVolume * volume, sustainVolume * volume, attackSeconds, decay, null, durationSeconds);
 
 		let panner = audioContext.createPanner();
 		panner.refDistance = CONST_MAX_SOUND_RADIUS_SQRT * attackVolume * 9;
