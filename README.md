@@ -4,3 +4,4 @@ Strange phenomena has overtaken the city, rumour has it that there is a quaranti
  
 Shoot buildings (repeatedly) to add them to the power network. Follow the the eclipse to get to your destination. Shoot anything that gets in your way. Keep your battery charged and try not to die. 
 
+play it here http://madmaw.github.com/gunturion/dist/index.html

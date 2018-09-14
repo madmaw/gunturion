@@ -218,6 +218,7 @@ module.exports = function (grunt) {
     grunt.registerTask('prod', ['ts:dist']);
     // intentional double-up of replace:js13k3
     grunt.registerTask('js13k', ['prod', 'closure-compiler:js13k', 'replace:js13k', 'replace:js13k2', 'replace:js13k3', 'replace:js13k3', 'copy','cssmin','replace:html', 'inline', 'htmlmin']);
+    grunt.registerTask('dist', ['prod', 'closure-compiler:js13k', 'copy','cssmin','replace:html', 'inline', 'htmlmin']);
     grunt.registerTask('default', ['prod', 'connect', 'watch']);
 
 };
