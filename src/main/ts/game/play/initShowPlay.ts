@@ -728,7 +728,7 @@ function initShowPlay(
                     }
                 }
                 lastPower = sqrt(power);
-                battery = min(maxBattery, battery + lastPower*amt*.01/min(1, (battery + 9)/CONST_BATTERY_WARNING));
+                battery = min(maxBattery, battery + lastPower*amt*.011/min(1, (battery + 9)/CONST_BATTERY_WARNING));
                 if( shooting && battery >= CONST_BASE_BULLET_COST ) {
                     let shotInterval = CONST_BASE_BULLET_INTERVAL;
                     if( player.age > lastShot + shotInterval || battery >= maxBattery ) {
@@ -753,6 +753,7 @@ function initShowPlay(
                         shootSound(player.x, player.y, player.z);
                         bullet.side = SIDE_NEUTRAL;
                         bullet.sound = null;
+                        /*
                         bullet.onCollision = function(world: World, withEntity: Entity) {
                             if( !FLAG_TEST_PHYSICS && withEntity.side != SIDE_POWERUPS && withEntity != player && (!bullet.restitution||withEntity.entityType) ) {
                                 bullet.die(world, withEntity);  
@@ -763,6 +764,7 @@ function initShowPlay(
                                 }
                             }
                         }
+                        */
                         if( FLAG_TEST_PHYSICS ) {
                             bullet.restitution = 1;
                         } 

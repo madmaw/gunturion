@@ -1,7 +1,7 @@
+///<reference path="math/Number.ts"/>
 ///<reference path="flags.ts"/>
 ///<reference path="constants.ts"/>
 ///<reference path="math/Matrix.ts"/>
-///<reference path="math/Number.ts"/>
 ///<reference path="math/Random.ts"/>
 ///<reference path="math/Rect.ts"/>
 ///<reference path="math/Vector.ts"/>

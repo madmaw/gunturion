@@ -958,6 +958,7 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             let quantity: number;
             let spawnSeed: number;
             let spawnRadius: number;
+            let dr: number;
             if( rng(2) ) {
                 spawnSeed = seed >> 6;
                 spawnRadius = radius*.9;
@@ -967,11 +968,15 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                 spawnRadius = radius/2;
                 quantity = rng(2) * radius | 2;
             }
+            if( quantity == 1 ) {
+                dr = 0;
+            } else {
+                dr = (radius - spawnRadius)/2;
+            }
             // always do it when we die
             deathBehaviour = function(world: World, source: Entity) {
                 let q = quantity;
-                let dr = radius - spawnRadius;
-                while( q-- && source ) {
+                while( q-- && source && source.side > SIDE_PLAYER ) {
                     let angle = q * CONST_DIRTY_PI_2 / quantity;
                     let child = monsterGenerator(
                         spawnSeed, 
@@ -1095,9 +1100,13 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
             onCollision: function(this: Monster, world: World, entity: Entity) {
                 if( entity.entityType  ) {
                     if( !FLAG_TEST_PHYSICS && 
+                        // bullets kill enemies
                         (entity.side == SIDE_NEUTRAL && monster.side == SIDE_ENEMY ||
-                         entity.side == SIDE_PLAYER && monster.side == SIDE_POWERUPS 
-                        )
+                        // players kill powerups
+                         entity.side == SIDE_PLAYER && monster.side == SIDE_POWERUPS ||
+                         // enemies kill bullets
+                         entity.side == SIDE_ENEMY && monster.side == SIDE_NEUTRAL 
+                        )                         
                     ) {
                         health--;
                         monster.lastDamageAge = world.age;
@@ -1114,7 +1123,13 @@ function monsterGeneratorFactory(gl: WebGLRenderingContext, rngFactory: RandomNu
                         pushY += dy/d;
                         pushCount++;    
                     }
-                } 
+                } else {
+                    // surface collision
+                    if( monster.side == SIDE_NEUTRAL && !monster.restitution ) {
+                        // bullets have special interactions
+                        monster.die(world, entity);
+                    }
+                }
                 recentCollisions.push(entity);
             },
             cleanup: function(this: Monster) {
