@@ -678,19 +678,23 @@ function initShowPlay(
                 if( forward ) {
                     vx += forwardVelocity * cosZ;
                     vy += forwardVelocity * sinZ;
-                    walkDistance += forwardVelocity * amt;
+                    if( lastFloor == player.age - amt ) {
+                        walkDistance += forwardVelocity * amt;
+                    }
                 }
                 if( backward ) {
                     vx -= baseVelocity * cosZ;
                     vy -= baseVelocity * sinZ;
-                    walkDistance -= baseVelocity * amt;
+                    if( lastFloor == player.age - amt ) {
+                        walkDistance -= baseVelocity * amt;
+                    }
                 }
                 let walkCos =cos(walkDistance); 
                 if( walkCos >= 0 && previousWalkCos < 0 || walkCos < 0 && previousWalkCos >= 0) {
                     stepSound(player.x, player.y, player.z - player.radius);
                 }
                 if( FLAG_ALLOW_JUMPING && jumping && lastFloor + CONST_CHARGE_FLOOR_DIFF > jumping ) {
-                    player.vz = .015;
+                    player.vz = .014;
                     lastFloor = 0;
                 }
                 player.vx = vx; 
