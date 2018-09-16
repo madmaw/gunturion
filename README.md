@@ -9,7 +9,7 @@ Move: WASD/Arrows
 Run: Shift
 Jump: Space
 
-![screenshot][image.png]
+![screenshot](image.png)
 
 play it here http://madmaw.github.com/gunturion/dist/index.html
 
