@@ -4,10 +4,10 @@ Strange phenomena has overtaken the city, rumour has it that there is a quaranti
  
 Shoot buildings (repeatedly) to add them to the power network. Follow the the eclipse to get to your destination. Shoot anything that gets in your way. Keep your battery charged and try not to die. 
 
-Shoot/turn: Mouse
-Move: WASD/Arrows
-Run: Shift
-Jump: Space
+* Shoot/turn: Mouse
+* Move: WASD/Arrows
+* Run: Shift
+* Jump: Space
 
 ![screenshot](image.png)
 
@@ -202,3 +202,4 @@ Due to the increased difficulty, I played through the entire JS13K version of th
 
 I am happy with the visuals. It would have been nice to have more neon stuff, but I think given the constraints, it looks quite good. The level design could definitely have used tunnels, which would have given the player somewhere to take shelter from monsters and limit their exposure to attacks from above (which are particularly annoying). 
 
+Oh well, next year I'll make an inaccessible version of Cookie Clicker or something
