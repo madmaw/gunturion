@@ -180,7 +180,7 @@ The values I ended up with are right on the upper end of what I, the developer, 
 https://js13kgames.com/entries/gunturion-shoot-the-purple-buildings
 
 That said I like hard games and the difficultly of the version of the JS13K site actually forces me to think instead of just sitting in the one place shooting buildings. So
-1. Strategy is very important, if you attack an enemy building with a building at your back, you will die. You need to pick off the ones on the fringes and work your way to the middle
+1. Strategy is very important, if you attack an enemy building with another enemy building at your back, you will die. You need to pick off the ones on the fringes and work your way to the middle
 2. Kill all the monsters before attacking the building. Buildings respawn monsters slower than you can shoot, once you'd killed all the monsters only then concentrate on converting the building
 3. Monsters spawn from the lights in the order the lights appear. After you'd drained all the monsters from a building, aim for the first light that appears so you immediately kill the first monster that appears. 
 4. The battery powerups boost your battery, but, more importantly, lengthens your battery bar. Dying resets this
