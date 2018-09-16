@@ -9,6 +9,8 @@ Move: WASD/Arrows
 Run: Shift
 Jump: Space
 
+![screenshot][image.png]
+
 play it here http://madmaw.github.com/gunturion/dist/index.html
 
 ## Postmortem
@@ -88,9 +90,20 @@ I also wanted the grid to have a glow, so I added in a value that indicated the 
 
 ### Minification
 
+While there are some specific things I did here, more generally I found there are two ways to make your source shorter. 
+
+1. Look at the minified output and try to come up with ways to help the minifier (Closure in my case) make something smaller
+2. Look at your code and try to find ways to make the same logic take up less space
+
+I cannot overstate the importance of (1), there were several points where I thought I was out of space, then found a reserved word I could remove, or a minus sign I could reverse.   
+
+#### No classes
+
+Classes take a massive amount of space, and really don't add anything. In TypeScript you can achieve the same effect with interfaces and simple objects. I like just returning functions where possible, which is even more efficient. My regexes (see below) didn't work with classes either. 
+
 #### Turning Closure's ES5 output back into ES6
 
-The Closure compiler only handles ES5, but the function declaration is longer than the equivalent ()=> 
+The Closure compiler is amazing, but it only handles ES5, but the `function` declaration is longer than the equivalent `()=>` 
 
 `function a()`
 `var a=()=>`
@@ -179,3 +192,13 @@ That said I like hard games and the difficultly of the version of the JS13K site
 10. If you are above a building, it will spawn flying monsters, below it will spawn either, but most likely rolling/bouncing ones. Sometimes it helps to draw out all the flying monsters then jump down to the ground 
 11. If you get stuck somewhere because it's too hard, backtrack and try to bring down some adjacent buildings, or open up a path somewhere else. The RNG can produce some absolutely stupid monsters in addition to some real terrors, sometimes it's just a matter of trial and error
 12. The challenge at the end is intentional, but beatable with a bit of thought, maybe even in ways I didn't intend
+
+
+### Final Thoughts
+
+After having a few days to reflect and look at the feedback, I think I managed to make an inaccessible FPS. Most players don't seem to persist with attacking long enough to convert a single building, which is pretty core to the whole experience, and how the battery/gun/shield/charging works isn't clear and/or is frustrating. 
+
+Due to the increased difficulty, I played through the entire JS13K version of the game in the days after submission to satisfy myself that it is possible to beat. I did get there, but it's really challenging, the second half is very grindy, the difficulty doesn't scale properly with some vicious monsters spawning in places and some really benign ones in others, and there was a bug where you could jump over walls if you ran at them. 
+
+I am happy with the visuals. It would have been nice to have more neon stuff, but I think given the constraints, it looks quite good. The level design could definitely have used tunnels, which would have given the player somewhere to take shelter from monsters and limit their exposure to attacks from above (which are particularly annoying). 
+
